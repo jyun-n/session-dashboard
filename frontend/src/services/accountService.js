@@ -1,37 +1,96 @@
-import { initialMockAccounts } from "./mockData";
+const API_URL = "http://localhost:4000/api";
 
-const STORAGE_KEY = "mockAccounts";
-const DELETE_SECRET = "022610";
-
-function initializeAccounts() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(initialMockAccounts));
-  }
-}
-
-function readAccounts() {
-  initializeAccounts();
-  return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-}
-
-function writeAccounts(accounts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
+function getHeaders() {
+  const token = localStorage.getItem("token");
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 }
 
 export async function getAccounts() {
-  return readAccounts();
+  const res = await fetch(`${API_URL}/accounts`, {
+    headers: getHeaders(),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    return [];
+  }
+
+  return data.data;
+}
+
+export async function createAccount(newAccount) {
+  const res = await fetch(`${API_URL}/accounts`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({
+      empNo: newAccount.empNo,
+      dept: newAccount.dept,
+      position: newAccount.position,
+      name: newAccount.name,
+      loginId: newAccount.id,       // 프론트의 id → loginId
+      password: newAccount.password,
+      role: newAccount.role?.toUpperCase() ?? "USER",
+    }),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    return {
+      success: false,
+      message: data.message || "계정 생성에 실패했습니다.",
+    };
+  }
+
+  return {
+    success: true,
+    message: "계정이 생성되었습니다.",
+    account: data.data,
+  };
+}
+
+export async function updateAccount(accountId, { dept, position }) {
+  const res = await fetch(`${API_URL}/accounts/${accountId}`, {
+    method: "PATCH",
+    headers: getHeaders(),
+    body: JSON.stringify({ dept, position }),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    return {
+      success: false,
+      message: data.message || "회원 정보 수정에 실패했습니다.",
+    };
+  }
+
+  return {
+    success: true,
+    message: "회원 정보가 수정되었습니다.",
+    account: data.data,
+  };
 }
 
 export async function resetAccountPassword(accountId, newPassword) {
-  const accounts = readAccounts();
-  const updatedAccounts = accounts.map((account) =>
-    account.id === accountId
-      ? { ...account, password: newPassword }
-      : account
-  );
+  const res = await fetch(`${API_URL}/accounts/${accountId}/password`, {
+    method: "PATCH",
+    headers: getHeaders(),
+    body: JSON.stringify({ newPassword }),
+  });
 
-  writeAccounts(updatedAccounts);
+  const data = await res.json();
+
+  if (!res.ok) {
+    return {
+      success: false,
+      message: data.message || "비밀번호 변경에 실패했습니다.",
+    };
+  }
 
   return {
     success: true,
@@ -39,60 +98,44 @@ export async function resetAccountPassword(accountId, newPassword) {
   };
 }
 
-export async function deleteAccount(accountId, secret) {
-  if (secret !== DELETE_SECRET) {
+export async function getAllLoginLogs() {
+  const res = await fetch(`${API_URL}/accounts/logs`, {
+    headers: getHeaders(),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
     return {
       success: false,
-      message: "탈퇴 비밀번호가 올바르지 않습니다.",
+      message: data.message || "로그를 불러오지 못했습니다.",
     };
   }
 
-  const accounts = readAccounts();
-  const updatedAccounts = accounts.filter((account) => account.id !== accountId);
+  return {
+    success: true,
+    logs: data.data,
+  };
+}
 
-  writeAccounts(updatedAccounts);
+export async function deleteAccount(accountId, secret) {
+  const res = await fetch(`${API_URL}/accounts/${accountId}`, {
+    method: "DELETE",
+    headers: getHeaders(),
+    body: JSON.stringify({ password: secret }),
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    return {
+      success: false,
+      message: data.message || "계정 탈퇴에 실패했습니다.",
+    };
+  }
 
   return {
     success: true,
     message: "계정이 탈퇴 처리되었습니다.",
-  };
-}
-
-export async function createAccount(newAccount) {
-  const accounts = readAccounts();
-
-  const existsId = accounts.some((account) => account.id === newAccount.id);
-  if (existsId) {
-    return {
-      success: false,
-      message: "이미 존재하는 아이디입니다.",
-    };
-  }
-
-  const existsEmpNo = accounts.some(
-    (account) => account.empNo === newAccount.empNo
-  );
-  if (existsEmpNo) {
-    return {
-      success: false,
-      message: "이미 존재하는 사번입니다.",
-    };
-  }
-
-  const nextNo =
-    accounts.length > 0 ? Math.max(...accounts.map((a) => a.no)) + 1 : 1;
-
-  const createdAccount = {
-    ...newAccount,
-    no: nextNo,
-  };
-
-  const updatedAccounts = [...accounts, createdAccount];
-  writeAccounts(updatedAccounts);
-
-  return {
-    success: true,
-    message: "계정이 생성되었습니다.",
-    account: createdAccount,
   };
 }

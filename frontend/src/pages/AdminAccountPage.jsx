@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import {
   Eye,
   EyeOff,
+  History,
   KeyRound,
   LogOut,
+  Pencil,
   Plus,
   ShieldCheck,
   Trash2,
@@ -17,6 +19,8 @@ import {
   resetAccountPassword,
   deleteAccount,
   createAccount,
+  updateAccount,
+  getAllLoginLogs,
 } from "../services/accountService";
 
 export default function AdminAccountPage() {
@@ -27,10 +31,16 @@ export default function AdminAccountPage() {
 
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
 
   const [newPassword, setNewPassword] = useState("");
   const [deleteSecret, setDeleteSecret] = useState("");
+  const [editForm, setEditForm] = useState({ dept: "", position: "" });
+  const [loginLogs, setLoginLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsError, setLogsError] = useState("");
   const [modalError, setModalError] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showDeleteSecret, setShowDeleteSecret] = useState(false);
@@ -72,10 +82,7 @@ export default function AdminAccountPage() {
   };
 
   const showToast = (message) => {
-    setToast({
-      show: true,
-      message,
-    });
+    setToast({ show: true, message });
   };
 
   const handleLogout = () => {
@@ -97,6 +104,53 @@ export default function AdminAccountPage() {
     setModalError("");
     setShowDeleteSecret(false);
     setDeleteModalOpen(true);
+  };
+
+  const openEditModal = (account) => {
+    setSelectedAccount(account);
+    setEditForm({ dept: account.dept ?? "", position: account.position ?? "" });
+    setModalError("");
+    setEditModalOpen(true);
+  };
+
+  const openLogsModal = async () => {
+    setLoginLogs([]);
+    setLogsError("");
+    setLogsLoading(true);
+    setLogsModalOpen(true);
+
+    const result = await getAllLoginLogs();
+    setLogsLoading(false);
+
+    if (!result.success) {
+      setLogsError(result.message);
+      return;
+    }
+    setLoginLogs(result.logs);
+  };
+
+  const handleUpdateAccount = async () => {
+    const dept = editForm.dept.trim();
+    const position = editForm.position.trim();
+
+    if (!dept || !position) {
+      setModalError("소속과 직책을 모두 입력해주세요.");
+      return;
+    }
+
+    const result = await updateAccount(selectedAccount.id, { dept, position });
+
+    if (!result.success) {
+      setModalError(result.message);
+      return;
+    }
+
+    setEditModalOpen(false);
+    setSelectedAccount(null);
+    setEditForm({ dept: "", position: "" });
+    setModalError("");
+    await loadAccounts();
+    showToast("회원 정보가 수정되었습니다.");
   };
 
   const handleResetPassword = async () => {
@@ -179,17 +233,10 @@ export default function AdminAccountPage() {
   const handleCreateInputChange = (key, value) => {
     if (key === "empNo") {
       const onlyNumbers = value.replace(/[^0-9]/g, "");
-      setCreateForm((prev) => ({
-        ...prev,
-        empNo: onlyNumbers,
-      }));
+      setCreateForm((prev) => ({ ...prev, empNo: onlyNumbers }));
       return;
     }
-
-    setCreateForm((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    setCreateForm((prev) => ({ ...prev, [key]: value }));
   };
 
   return (
@@ -281,7 +328,7 @@ export default function AdminAccountPage() {
                         >
                           <td className="border-b border-r border-white/10 px-4 py-5">
                             <span className="inline-flex min-w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-xs font-semibold text-slate-300">
-                              {account.no || index + 1}
+                              {index + 1}
                             </span>
                           </td>
                           <td className="border-b border-r border-white/10 px-4 py-5">
@@ -298,11 +345,21 @@ export default function AdminAccountPage() {
                           </td>
                           <td className="border-b border-r border-white/10 px-4 py-5">
                             <span className="inline-flex items-center rounded-full border border-sky-400/18 bg-sky-400/8 px-3 py-1 text-sm font-medium text-sky-200">
-                              {account.id}
+                              {account.loginId}
                             </span>
                           </td>
                           <td className="border-b border-white/10 px-4 py-4">
                             <div className="flex items-center justify-center gap-2">
+                              {account.role !== "ADMIN" && (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(account)}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-[13px] font-semibold text-slate-200 transition hover:border-sky-300/30 hover:bg-sky-500/[0.08] hover:text-white"
+                                >
+                                  <Pencil size={14} />
+                                  수정
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => openResetModal(account)}
@@ -311,14 +368,26 @@ export default function AdminAccountPage() {
                                 <KeyRound size={14} />
                                 비밀번호 재설정
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => openDeleteModal(account)}
-                                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-[13px] font-semibold text-slate-200 transition hover:border-rose-400/25 hover:bg-rose-500/[0.08] hover:text-white"
-                              >
-                                <Trash2 size={14} />
-                                탈퇴
-                              </button>
+                              {account.role === "ADMIN" && (
+                                <button
+                                  type="button"
+                                  onClick={openLogsModal}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-[13px] font-semibold text-slate-200 transition hover:border-emerald-300/30 hover:bg-emerald-500/[0.08] hover:text-white"
+                                >
+                                  <History size={14} />
+                                  로그 보기
+                                </button>
+                              )}
+                              {account.role !== "ADMIN" && (
+                                <button
+                                  type="button"
+                                  onClick={() => openDeleteModal(account)}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-[13px] font-semibold text-slate-200 transition hover:border-rose-400/25 hover:bg-rose-500/[0.08] hover:text-white"
+                                >
+                                  <Trash2 size={14} />
+                                  탈퇴
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -399,11 +468,7 @@ export default function AdminAccountPage() {
                           className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-sky-300"
                           aria-label={showCreatePassword ? "비밀번호 숨기기" : "비밀번호 보기"}
                         >
-                          {showCreatePassword ? (
-                            <EyeOff size={18} />
-                          ) : (
-                            <Eye size={18} />
-                          )}
+                          {showCreatePassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                       </div>
                     </div>
@@ -411,16 +476,16 @@ export default function AdminAccountPage() {
 
                   {(createError || createMessage) && (
                     <div className="mt-5 space-y-2">
-                      {createError ? (
+                      {createError && (
                         <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.08] px-4 py-3 text-sm text-rose-400">
                           {createError}
                         </div>
-                      ) : null}
-                      {createMessage ? (
+                      )}
+                      {createMessage && (
                         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.08] px-4 py-3 text-sm text-emerald-400">
                           {createMessage}
                         </div>
-                      ) : null}
+                      )}
                     </div>
                   )}
 
@@ -462,13 +527,161 @@ export default function AdminAccountPage() {
           </div>
         </div>
 
+        {/* 회원 정보 수정 모달 */}
+        {editModalOpen && (
+          <Modal title="회원 정보 수정" onClose={() => setEditModalOpen(false)}>
+            <p className="mb-4 text-sm leading-relaxed text-slate-300">
+              <span className="font-semibold text-white">{selectedAccount?.name}</span>{" "}
+              ({selectedAccount?.loginId}) 계정의 소속과 직책을 수정합니다.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+                  소속
+                </label>
+                <input
+                  type="text"
+                  value={editForm.dept}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, dept: e.target.value }))
+                  }
+                  placeholder="예: 디지털전략팀"
+                  className="h-[54px] w-full rounded-[16px] border border-white/10 bg-white/[0.04] px-4 text-[14px] text-white outline-none transition duration-200 placeholder:text-slate-600 focus:border-sky-500/50 focus:bg-white/[0.06]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+                  직책
+                </label>
+                <input
+                  type="text"
+                  value={editForm.position}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, position: e.target.value }))
+                  }
+                  placeholder="예: 서기"
+                  className="h-[54px] w-full rounded-[16px] border border-white/10 bg-white/[0.04] px-4 text-[14px] text-white outline-none transition duration-200 placeholder:text-slate-600 focus:border-sky-500/50 focus:bg-white/[0.06]"
+                />
+              </div>
+            </div>
+
+            {modalError && <p className="mt-3 text-sm text-rose-400">{modalError}</p>}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(false)}
+                className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.08]"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateAccount}
+                className="rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+              >
+                변경
+              </button>
+            </div>
+          </Modal>
+        )}
+
+        {/* 전체 로그인 기록 모달 */}
+        {logsModalOpen && (
+          <Modal title="로그인 기록 (전체 계정)" onClose={() => setLogsModalOpen(false)} size="large">
+            <p className="mb-4 text-sm leading-relaxed text-slate-300">
+              최근 로그인 기록을 최신순으로 보여줍니다.
+            </p>
+
+            {logsLoading ? (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-slate-400">
+                로그를 불러오는 중...
+              </div>
+            ) : logsError ? (
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.08] px-4 py-3 text-sm text-rose-400">
+                {logsError}
+              </div>
+            ) : loginLogs.length === 0 ? (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-center text-sm text-slate-400">
+                로그인 기록이 없습니다.
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-[16px] border border-white/10">
+                <div className="max-h-[480px] overflow-y-auto">
+                  <table className="w-full border-collapse text-left text-[13px]">
+                    <colgroup>
+                      <col className="w-[170px]" />
+                      <col />
+                      <col className="w-[120px]" />
+                      <col />
+                      <col className="w-[160px]" />
+                    </colgroup>
+                    <thead className="sticky top-0 bg-[#0b1728]">
+                      <tr className="text-[12px] font-semibold tracking-[0.04em] text-slate-300">
+                        <th className="border-b border-r border-white/10 px-4 py-3 whitespace-nowrap">접속 시각</th>
+                        <th className="border-b border-r border-white/10 px-4 py-3">성명</th>
+                        <th className="border-b border-r border-white/10 px-4 py-3">아이디</th>
+                        <th className="border-b border-r border-white/10 px-4 py-3">소속 / 직책</th>
+                        <th className="border-b border-white/10 px-4 py-3">IP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loginLogs.map((log) => (
+                        <tr key={log.id} className="text-slate-100">
+                          <td className="border-b border-r border-white/10 px-4 py-3 font-medium text-white whitespace-nowrap">
+                            {formatLoginAt(log.loginAt)}
+                          </td>
+                          <td className="border-b border-r border-white/10 px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-white">
+                                {log.account?.name || "-"}
+                              </span>
+                              {log.account?.role === "ADMIN" && (
+                                <span className="inline-flex items-center rounded-full border border-sky-400/20 bg-sky-400/8 px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-sky-200 uppercase">
+                                  Admin
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="border-b border-r border-white/10 px-4 py-3">
+                            <span className="inline-flex items-center rounded-full border border-sky-400/18 bg-sky-400/8 px-2.5 py-0.5 text-[12px] font-medium text-sky-200">
+                              {log.account?.loginId || "-"}
+                            </span>
+                          </td>
+                          <td className="border-b border-r border-white/10 px-4 py-3 text-slate-300">
+                            {log.account?.dept || "-"} / {log.account?.position || "-"}
+                          </td>
+                          <td className="border-b border-white/10 px-4 py-3 text-slate-300 whitespace-nowrap">
+                            {log.ipAddress || "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setLogsModalOpen(false)}
+                className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-white/[0.08]"
+              >
+                닫기
+              </button>
+            </div>
+          </Modal>
+        )}
+
+        {/* 비밀번호 재설정 모달 */}
         {resetModalOpen && (
           <Modal title="비밀번호 재설정" onClose={() => setResetModalOpen(false)}>
             <p className="mb-4 text-sm leading-relaxed text-slate-300">
-              <span className="font-semibold text-white">
-                {selectedAccount?.name}
-              </span>{" "}
-              ({selectedAccount?.id}) 계정의 새 비밀번호를 입력하세요.
+              <span className="font-semibold text-white">{selectedAccount?.name}</span>{" "}
+              ({selectedAccount?.loginId}) 계정의 새 비밀번호를 입력하세요.
             </p>
 
             <div className="relative">
@@ -483,17 +696,13 @@ export default function AdminAccountPage() {
                 type="button"
                 onClick={() => setShowNewPassword((prev) => !prev)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-sky-300"
-                aria-label={
-                  showNewPassword ? "새 비밀번호 숨기기" : "새 비밀번호 보기"
-                }
+                aria-label={showNewPassword ? "새 비밀번호 숨기기" : "새 비밀번호 보기"}
               >
                 {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
 
-            {modalError ? (
-              <p className="mt-3 text-sm text-rose-400">{modalError}</p>
-            ) : null}
+            {modalError && <p className="mt-3 text-sm text-rose-400">{modalError}</p>}
 
             <div className="mt-6 flex justify-end gap-3">
               <button
@@ -514,13 +723,12 @@ export default function AdminAccountPage() {
           </Modal>
         )}
 
+        {/* 계정 탈퇴 모달 */}
         {deleteModalOpen && (
           <Modal title="계정 탈퇴" onClose={() => setDeleteModalOpen(false)}>
             <p className="mb-4 text-sm leading-relaxed text-slate-300">
-              <span className="font-semibold text-white">
-                {selectedAccount?.name}
-              </span>{" "}
-              ({selectedAccount?.id}) 계정을 탈퇴 처리하려면 비밀번호를 입력하세요.
+              <span className="font-semibold text-white">{selectedAccount?.name}</span>{" "}
+              ({selectedAccount?.loginId}) 계정을 탈퇴 처리하려면 비밀번호를 입력하세요.
             </p>
 
             <div className="relative">
@@ -535,17 +743,13 @@ export default function AdminAccountPage() {
                 type="button"
                 onClick={() => setShowDeleteSecret((prev) => !prev)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-sky-300"
-                aria-label={
-                  showDeleteSecret ? "탈퇴 비밀번호 숨기기" : "탈퇴 비밀번호 보기"
-                }
+                aria-label={showDeleteSecret ? "탈퇴 비밀번호 숨기기" : "탈퇴 비밀번호 보기"}
               >
                 {showDeleteSecret ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
 
-            {modalError ? (
-              <p className="mt-3 text-sm text-rose-400">{modalError}</p>
-            ) : null}
+            {modalError && <p className="mt-3 text-sm text-rose-400">{modalError}</p>}
 
             <div className="mt-6 flex justify-end gap-3">
               <button
@@ -579,10 +783,21 @@ function RuleItem({ text }) {
   );
 }
 
-function Modal({ title, children, onClose }) {
+function formatLoginAt(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function Modal({ title, children, onClose, size = "default" }) {
+  const widthClass = size === "large" ? "max-w-[820px]" : "max-w-[520px]";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className="w-full max-w-[520px] rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,8,23,0.99))] p-6 shadow-[0_0_60px_rgba(2,132,199,0.12)] backdrop-blur-2xl">
+      <div className={`w-full ${widthClass} rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,8,23,0.99))] p-6 shadow-[0_0_60px_rgba(2,132,199,0.12)] backdrop-blur-2xl`}>
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-white">
             {title}

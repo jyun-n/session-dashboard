@@ -18,11 +18,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "declaration": false,
-    "removeComments": true,
-    "baseUrl": "./src",
-    "paths": {
-      "@/*": ["*"]
-    }
+    "removeComments": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

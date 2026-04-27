@@ -11,6 +11,7 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("1d"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  DELETE_SECRET: z.string().min(1, "DELETE_SECRET is required"),
 });
 
 const parsed = envSchema.safeParse(process.env);

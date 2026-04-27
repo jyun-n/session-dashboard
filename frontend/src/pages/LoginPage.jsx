@@ -43,7 +43,7 @@ export default function LoginPage() {
       return;
     }
 
-    saveAuth(result.user);
+    saveAuth(result.token, result.user);
 
     if (result.user.role === "admin") {
       navigate("/admin/accounts");

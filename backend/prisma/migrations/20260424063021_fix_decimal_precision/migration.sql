@@ -1,0 +1,13 @@
+-- AlterTable
+ALTER TABLE "daily_stats_by_dept" ALTER COLUMN "sessionUtilization" SET DATA TYPE DECIMAL(7,2),
+ALTER COLUMN "bookingRate" SET DATA TYPE DECIMAL(7,2);
+
+-- AlterTable
+ALTER TABLE "daily_stats_by_doctor" ALTER COLUMN "sessionUtilization" SET DATA TYPE DECIMAL(7,2),
+ALTER COLUMN "avgOrdMin" SET DATA TYPE DECIMAL(10,2),
+ALTER COLUMN "avgWaitMin" SET DATA TYPE DECIMAL(10,2),
+ALTER COLUMN "bookingRate" SET DATA TYPE DECIMAL(7,2);
+
+-- AlterTable
+ALTER TABLE "raw_patient_stats" ALTER COLUMN "avgOrdMin" SET DATA TYPE DECIMAL(10,2),
+ALTER COLUMN "avgWaitMin" SET DATA TYPE DECIMAL(10,2);

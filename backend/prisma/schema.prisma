@@ -13,17 +13,121 @@ enum Role {
 }
 
 model Account {
-  id           String    @id
-  no           Int       @unique @default(autoincrement())
+  id           String    @id @default(cuid())
   empNo        String    @unique
   dept         String
   position     String
   name         String
+  loginId      String    @unique
   passwordHash String
   role         Role      @default(USER)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
+  loginLogs    LoginLog[]
+
   @@map("accounts")
+}
+
+model LoginLog {
+  id        String   @id @default(cuid())
+  accountId String
+  loginAt   DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, loginAt(sort: Desc)])
+  @@map("login_logs")
+}
+
+model RawPatientStats {
+  id          Int      @id @default(autoincrement())
+  statDate    DateTime @db.Date
+  doctorId    String
+  doctorName  String
+  deptCd      String
+  deptName    String
+  fsexamFlag  String
+  avgOrdTime  String?
+  avgWaitTime String?
+  avgOrdMin   Decimal? @db.Decimal(10, 2)
+  avgWaitMin  Decimal? @db.Decimal(10, 2)
+  patCnt      Int      @default(0)
+  collectedAt DateTime @default(now())
+
+  @@unique([statDate, doctorId, deptCd, fsexamFlag])
+  @@index([statDate, deptCd])
+  @@map("raw_patient_stats")
+}
+
+model RawSession {
+  id          Int      @id @default(autoincrement())
+  statDate    DateTime @db.Date
+  deptCd      String
+  deptName    String
+  doctorId    String
+  doctorName  String
+  planSession Int      @default(0)
+  realSession Int      @default(0)
+  fstExamCap  Int      @default(0)
+  reExamCap   Int      @default(0)
+  collectedAt DateTime @default(now())
+
+  @@unique([statDate, doctorId, deptCd])
+  @@index([statDate, deptCd])
+  @@map("raw_sessions")
+}
+
+model DailyStatsByDoctor {
+  id                 Int      @id @default(autoincrement())
+  statDate           DateTime @db.Date
+  deptCd             String
+  deptName           String
+  doctorId           String
+  doctorName         String
+  planSession        Int?
+  realSession        Int?
+  sessionUtilization Decimal? @db.Decimal(7, 2)
+  fstExamCap         Int?
+  reExamCap          Int?
+  avgOrdTime         String?
+  avgWaitTime        String?
+  avgOrdMin          Decimal? @db.Decimal(10, 2)
+  avgWaitMin         Decimal? @db.Decimal(10, 2)
+  firstVisitCount    Int?
+  revisitCount       Int?
+  totalPatients      Int?
+  bookingRate        Decimal? @db.Decimal(7, 2)
+  aggregatedAt       DateTime @default(now())
+
+  @@unique([statDate, doctorId, deptCd])
+  @@index([statDate, deptCd])
+  @@map("daily_stats_by_doctor")
+}
+
+model DailyStatsByDept {
+  id                 Int      @id @default(autoincrement())
+  statDate           DateTime @db.Date
+  deptCd             String
+  deptName           String
+  planSession        Int?
+  realSession        Int?
+  sessionUtilization Decimal? @db.Decimal(7, 2)
+  fstExamCap         Int?
+  reExamCap          Int?
+  avgOrdTime         String?
+  avgWaitTime        String?
+  firstVisitCount    Int?
+  revisitCount       Int?
+  totalPatients      Int?
+  bookingRate        Decimal? @db.Decimal(7, 2)
+  doctorCount        Int?
+  aggregatedAt       DateTime @default(now())
+
+  @@unique([statDate, deptCd])
+  @@index([statDate, deptCd])
+  @@map("daily_stats_by_dept")
 }
