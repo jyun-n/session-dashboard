@@ -2,6 +2,7 @@ import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { disconnectDb } from "./config/db.js";
 import { logger } from "./utils/logger.js";
+import { startScheduler } from "./scheduler.js";
 
 const app = createApp();
 
@@ -10,6 +11,7 @@ const server = app.listen(env.PORT, () => {
     env: env.NODE_ENV,
     cors: env.CORS_ORIGIN,
   });
+  startScheduler();
 });
 
 async function shutdown(signal: string) {
