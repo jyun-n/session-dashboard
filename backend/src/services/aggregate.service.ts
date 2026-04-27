@@ -28,6 +28,7 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
     const revisitCount    = rRow?.patCnt ?? 0;
     const totalPatients   = validRows.reduce((sum, r) => sum + r.patCnt, 0);
 
+    // 평균 진료시간 / 대기시간 가중평균 (D+S+R+F, 4/5 제외)
     let avgOrdMin:  number | null = null;
     let avgWaitMin: number | null = null;
 
@@ -44,13 +45,14 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
     const avgOrdTime  = avgOrdMin  !== null ? minToHhmi(Math.round(avgOrdMin))  : null;
     const avgWaitTime = avgWaitMin !== null ? minToHhmi(Math.round(avgWaitMin)) : null;
 
+    // 세션 가동률
     const sessionUtilization = session.planSession > 0
       ? new Decimal(session.realSession / session.planSession * 100).toDecimalPlaces(2)
       : null;
 
-    const capTotal    = session.fstExamCap + session.reExamCap;
-    const bookingRate = capTotal > 0
-      ? new Decimal((firstVisitCount + revisitCount) / capTotal * 100).toDecimalPlaces(2)
+    // 예약현황 가동률 = totalPatients / totalExamCap × 100
+    const bookingRate = session.totalExamCap > 0
+      ? new Decimal(totalPatients / session.totalExamCap * 100).toDecimalPlaces(2)
       : null;
 
     await prisma.dailyStatsByDoctor.upsert({
@@ -60,16 +62,19 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
       update: {
         deptName: session.deptName, doctorName: session.doctorName,
         planSession: session.planSession, realSession: session.realSession,
-        sessionUtilization, fstExamCap: session.fstExamCap, reExamCap: session.reExamCap,
-        avgOrdTime, avgWaitTime, avgOrdMin: toDecimal(avgOrdMin), avgWaitMin: toDecimal(avgWaitMin),
+        sessionUtilization, totalExamCap: session.totalExamCap,
+        avgOrdTime, avgWaitTime,
+        avgOrdMin: toDecimal(avgOrdMin), avgWaitMin: toDecimal(avgWaitMin),
         firstVisitCount, revisitCount, totalPatients, bookingRate,
         aggregatedAt: new Date(),
       },
       create: {
-        statDate, deptCd, deptName: session.deptName, doctorId, doctorName: session.doctorName,
+        statDate, deptCd, deptName: session.deptName,
+        doctorId, doctorName: session.doctorName,
         planSession: session.planSession, realSession: session.realSession,
-        sessionUtilization, fstExamCap: session.fstExamCap, reExamCap: session.reExamCap,
-        avgOrdTime, avgWaitTime, avgOrdMin: toDecimal(avgOrdMin), avgWaitMin: toDecimal(avgWaitMin),
+        sessionUtilization, totalExamCap: session.totalExamCap,
+        avgOrdTime, avgWaitTime,
+        avgOrdMin: toDecimal(avgOrdMin), avgWaitMin: toDecimal(avgWaitMin),
         firstVisitCount, revisitCount, totalPatients, bookingRate,
       },
     });
@@ -95,8 +100,7 @@ async function aggregateByDept(fromDate: Date, toDate: Date) {
     const doctorCount = doctors.length;
     const planSession = doctors.reduce((sum, d) => sum + (d.planSession ?? 0), 0);
     const realSession = doctors.reduce((sum, d) => sum + (d.realSession ?? 0), 0);
-    const fstExamCap  = doctors.reduce((sum, d) => sum + (d.fstExamCap  ?? 0), 0);
-    const reExamCap   = doctors.reduce((sum, d) => sum + (d.reExamCap   ?? 0), 0);
+    const totalExamCap = doctors.reduce((sum, d) => sum + (d.totalExamCap ?? 0), 0);
 
     const sessionUtilization = planSession > 0
       ? new Decimal(realSession / planSession * 100).toDecimalPlaces(2)
@@ -106,9 +110,9 @@ async function aggregateByDept(fromDate: Date, toDate: Date) {
     const revisitCount    = doctors.reduce((sum, d) => sum + (d.revisitCount    ?? 0), 0);
     const totalPatients   = doctors.reduce((sum, d) => sum + (d.totalPatients   ?? 0), 0);
 
-    const capTotal    = fstExamCap + reExamCap;
-    const bookingRate = capTotal > 0
-      ? new Decimal((firstVisitCount + revisitCount) / capTotal * 100).toDecimalPlaces(2)
+    // 예약현황 가동률 = totalPatients / totalExamCap × 100
+    const bookingRate = totalExamCap > 0
+      ? new Decimal(totalPatients / totalExamCap * 100).toDecimalPlaces(2)
       : null;
 
     let avgOrdMin:  number | null = null;
@@ -132,14 +136,14 @@ async function aggregateByDept(fromDate: Date, toDate: Date) {
     await prisma.dailyStatsByDept.upsert({
       where: { statDate_deptCd: { statDate, deptCd } },
       update: {
-        deptName, doctorCount, planSession, realSession, sessionUtilization,
-        fstExamCap, reExamCap, avgOrdTime, avgWaitTime,
+        deptName, doctorCount, planSession, realSession,
+        sessionUtilization, totalExamCap, avgOrdTime, avgWaitTime,
         firstVisitCount, revisitCount, totalPatients, bookingRate,
         aggregatedAt: new Date(),
       },
       create: {
         statDate, deptCd, deptName, doctorCount, planSession, realSession,
-        sessionUtilization, fstExamCap, reExamCap, avgOrdTime, avgWaitTime,
+        sessionUtilization, totalExamCap, avgOrdTime, avgWaitTime,
         firstVisitCount, revisitCount, totalPatients, bookingRate,
       },
     });

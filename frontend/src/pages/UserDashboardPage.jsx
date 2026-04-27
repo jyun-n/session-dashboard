@@ -479,7 +479,6 @@ export default function UserDashboardPage() {
   const [sourceHelpOpen, setSourceHelpOpen] = useState(false);
   const sourceHelpRef = useRef(null);
 
-  // ── 실제 API 연동 ──────────────────────────────
   const [allRecords, setAllRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastCollectedAt, setLastCollectedAt] = useState(null);
@@ -502,9 +501,8 @@ export default function UserDashboardPage() {
       .finally(() => setIsLoading(false));
   }, [periodRange]);
 
-  // recordsByPeriod = 전체 레코드 (API에서 이미 기간 필터 적용됨)
+  // 기간 필터는 API에서 이미 적용되므로 별도 클라이언트 필터링 없이 그대로 사용한다.
   const recordsByPeriod = allRecords;
-  // ───────────────────────────────────────────────
 
   const isTrendViewAvailable = periodType !== "daily";
 
@@ -900,11 +898,15 @@ export default function UserDashboardPage() {
                       minute: "2-digit",
                     })}
                   </span>
+                  <span className="mx-2 text-slate-600">·</span>
+                  <span className="text-slate-500">
+                    2026년 4월 1일부터 데이터 조회가 가능합니다.
+                  </span>
                 </p>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="inline-flex rounded-2xl border border-white/10 bg-white/[0.03] p-1">
                 {PERIOD_OPTIONS.map((option) => (
                   <button
@@ -934,9 +936,11 @@ export default function UserDashboardPage() {
           </div>
 
           {periodType === "custom" && (
-            <div className="mb-4 grid gap-3 rounded-[20px] border border-white/10 bg-white/[0.025] p-4 md:grid-cols-2 lg:max-w-[460px]">
-              <DateInput label="시작일" value={customStart} onChange={setCustomStart} />
-              <DateInput label="종료일" value={customEnd} onChange={setCustomEnd} />
+            <div className="mb-4 flex justify-end">
+              <div className="grid w-full gap-3 rounded-[20px] border border-white/10 bg-white/[0.025] p-4 md:grid-cols-2 lg:max-w-[460px]">
+                <DateInput label="시작일" value={customStart} onChange={setCustomStart} />
+                <DateInput label="종료일" value={customEnd} onChange={setCustomEnd} />
+              </div>
             </div>
           )}
 

@@ -3,20 +3,19 @@ import { authenticate, requireAdmin } from "../middleware/auth.js";
 import {
   getAccountsHandler,
   createAccountHandler,
-  updateAccountHandler,
   resetPasswordHandler,
   deleteAccountHandler,
+  updateAccountHandler,
   getAllLoginLogsHandler,
 } from "../controllers/accounts.controller.js";
 
 export const accountsRouter = Router();
 
-// 모든 accounts API는 ADMIN만 접근 가능
 accountsRouter.use(authenticate, requireAdmin);
 
+accountsRouter.get("/logs/all", getAllLoginLogsHandler);
 accountsRouter.get("/", getAccountsHandler);
-accountsRouter.get("/logs", getAllLoginLogsHandler);
 accountsRouter.post("/", createAccountHandler);
-accountsRouter.patch("/:id/password", resetPasswordHandler);
 accountsRouter.patch("/:id", updateAccountHandler);
+accountsRouter.patch("/:id/password", resetPasswordHandler);
 accountsRouter.delete("/:id", deleteAccountHandler);

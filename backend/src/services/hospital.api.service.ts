@@ -84,15 +84,14 @@ export async function fetchPatientStats(
 }
 
 export interface RawSessionRow {
-  statDate:    string;
-  deptCd:      string;
-  deptName:    string;
-  doctorId:    string;
-  doctorName:  string;
-  planSession: number;
-  realSession: number;
-  fstExamCap:  number;
-  reExamCap:   number;
+  statDate:     string;   // basedd
+  deptCd:       string;
+  deptName:     string;
+  doctorId:     string;
+  doctorName:   string;
+  planSession:  number;
+  realSession:  number;
+  totalExamCap: number;   // totalexamcap
 }
 
 export async function fetchSessions(
@@ -110,15 +109,14 @@ export async function fetchSessions(
   return rows.map((row: unknown) => {
     const r = row as Record<string, unknown>;
     return {
-      statDate:    cdata(r.enddd),
-      deptCd:      cdata(r.orddeptcd),
-      deptName:    cdata(r.orddeptnm),
-      doctorId:    cdata(r.orddrid),
-      doctorName:  cdata(r.orddrnm),
-      planSession: parseInt(cdata(r.plansession) || "0", 10),
-      realSession: parseInt(cdata(r.realsession) || "0", 10),
-      fstExamCap:  parseInt(cdata(r.fstexamcap)  || "0", 10),
-      reExamCap:   parseInt(cdata(r.reexamcap)   || "0", 10),
+      statDate:     cdata(r.basedd),          // enddd → basedd
+      deptCd:       cdata(r.orddeptcd),
+      deptName:     cdata(r.orddeptnm),
+      doctorId:     cdata(r.orddrid),
+      doctorName:   cdata(r.orddrnm),
+      planSession:  parseInt(cdata(r.plansession)   || "0", 10),
+      realSession:  parseInt(cdata(r.realsession)   || "0", 10),
+      totalExamCap: parseInt(cdata(r.totalexamcap)  || "0", 10),
     };
   });
 }

@@ -43,6 +43,7 @@ model LoginLog {
   @@map("login_logs")
 }
 
+// DRPMA00100 - 외래진료 환자별 진료정보
 model RawPatientStats {
   id          Int      @id @default(autoincrement())
   statDate    DateTime @db.Date
@@ -63,24 +64,25 @@ model RawPatientStats {
   @@map("raw_patient_stats")
 }
 
+// DRPMA00200 - 외래세션정보
 model RawSession {
-  id          Int      @id @default(autoincrement())
-  statDate    DateTime @db.Date
-  deptCd      String
-  deptName    String
-  doctorId    String
-  doctorName  String
-  planSession Int      @default(0)
-  realSession Int      @default(0)
-  fstExamCap  Int      @default(0)
-  reExamCap   Int      @default(0)
-  collectedAt DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  statDate      DateTime @db.Date        // basedd
+  deptCd        String
+  deptName      String
+  doctorId      String
+  doctorName    String
+  planSession   Int      @default(0)
+  realSession   Int      @default(0)
+  totalExamCap  Int      @default(0)     // totalexamcap (fstExamCap + reExamCap 통합)
+  collectedAt   DateTime @default(now())
 
   @@unique([statDate, doctorId, deptCd])
   @@index([statDate, deptCd])
   @@map("raw_sessions")
 }
 
+// 교수별 집계
 model DailyStatsByDoctor {
   id                 Int      @id @default(autoincrement())
   statDate           DateTime @db.Date
@@ -88,19 +90,27 @@ model DailyStatsByDoctor {
   deptName           String
   doctorId           String
   doctorName         String
+
+  // 세션 (DRPMA00200)
   planSession        Int?
   realSession        Int?
   sessionUtilization Decimal? @db.Decimal(7, 2)
-  fstExamCap         Int?
-  reExamCap          Int?
+  totalExamCap       Int?                        // totalexamcap
+
+  // 진료시간 / 대기시간
   avgOrdTime         String?
   avgWaitTime        String?
   avgOrdMin          Decimal? @db.Decimal(10, 2)
   avgWaitMin         Decimal? @db.Decimal(10, 2)
-  firstVisitCount    Int?
-  revisitCount       Int?
-  totalPatients      Int?
+
+  // 초진 / 재진 / 전체 환자수 (4/5 제외)
+  firstVisitCount    Int?     // F patcnt
+  revisitCount       Int?     // R patcnt
+  totalPatients      Int?     // D+S+R+F patcnt 합계
+
+  // 예약현황 가동률 = totalPatients / totalExamCap × 100
   bookingRate        Decimal? @db.Decimal(7, 2)
+
   aggregatedAt       DateTime @default(now())
 
   @@unique([statDate, doctorId, deptCd])
@@ -108,23 +118,34 @@ model DailyStatsByDoctor {
   @@map("daily_stats_by_doctor")
 }
 
+// 진료과별 집계
 model DailyStatsByDept {
   id                 Int      @id @default(autoincrement())
   statDate           DateTime @db.Date
   deptCd             String
   deptName           String
+
+  // 세션
   planSession        Int?
   realSession        Int?
   sessionUtilization Decimal? @db.Decimal(7, 2)
-  fstExamCap         Int?
-  reExamCap          Int?
+  totalExamCap       Int?
+
+  // 진료시간 / 대기시간
   avgOrdTime         String?
   avgWaitTime        String?
+
+  // 초진 / 재진 / 전체 환자수
   firstVisitCount    Int?
   revisitCount       Int?
   totalPatients      Int?
+
+  // 예약현황 가동률
   bookingRate        Decimal? @db.Decimal(7, 2)
+
+  // 교수 수
   doctorCount        Int?
+
   aggregatedAt       DateTime @default(now())
 
   @@unique([statDate, deptCd])

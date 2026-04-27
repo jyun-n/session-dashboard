@@ -10,8 +10,6 @@ const collectSchema = z.object({
   todd:   z.string().regex(/^\d{8}$/, "yyyymmdd 형식으로 입력해주세요."),
 });
 
-// POST /api/collect
-// 수동 수집 트리거 (ADMIN만 가능)
 collectRouter.post("/", authenticate, requireAdmin, async (req, res, next) => {
   try {
     const { fromdd, todd } = collectSchema.parse(req.body);

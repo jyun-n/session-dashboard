@@ -32,7 +32,6 @@ function formatDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-// GET /api/dashboard
 dashboardRouter.get("/", authenticate, async (req, res, next) => {
   try {
     const { fromdd, todd } = querySchema.parse(req.query);
@@ -40,25 +39,23 @@ dashboardRouter.get("/", authenticate, async (req, res, next) => {
     const fromDate = parseDate(fromdd);
     const toDate   = parseDate(todd);
 
-    // 교수별 집계 데이터 조회
     const rows = await prisma.dailyStatsByDoctor.findMany({
       where: {
-        statDate: { gte: fromDate, lte: toDate },
+        statDate:   { gte: fromDate, lte: toDate },
+        doctorName: { not: "" },
       },
       orderBy: [
-        { statDate: "asc" },
-        { deptName: "asc" },
+        { statDate:   "asc" },
+        { deptName:   "asc" },
         { doctorName: "asc" },
       ],
     });
 
-    // 마지막 수집 시간 조회
     const lastCollected = await prisma.rawPatientStats.findFirst({
       orderBy: { collectedAt: "desc" },
-      select: { collectedAt: true },
+      select:  { collectedAt: true },
     });
 
-    // 대시보드 데이터 구조
     const records = rows.map((row) => ({
       date:               formatDate(row.statDate),
       dept:               row.deptName,

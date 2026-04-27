@@ -8,7 +8,6 @@ export interface JwtPayload {
   role: "ADMIN" | "USER";
 }
 
-// 토큰 검증 미들웨어
 export const authenticate: RequestHandler = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -27,7 +26,6 @@ export const authenticate: RequestHandler = (req, res, next) => {
   }
 };
 
-// ADMIN 권한 확인 미들웨어
 export const requireAdmin: RequestHandler = (_req, res, next) => {
   const user = res.locals.user as JwtPayload;
 

@@ -264,9 +264,6 @@ export default function AdminAccountPage() {
               <h1 className="text-[30px] font-semibold tracking-[-0.04em] text-white lg:text-[34px]">
                 계정 관리
               </h1>
-              <p className="mt-2 text-sm text-slate-400">
-                관리자 계정 생성, 비밀번호 재설정, 탈퇴 처리를 관리합니다.
-              </p>
             </div>
 
             <button
@@ -507,9 +504,6 @@ export default function AdminAccountPage() {
                     </div>
                     <div>
                       <h2 className="text-lg font-semibold text-white">생성 규칙</h2>
-                      <p className="text-sm text-slate-400">
-                        계정 생성 시 반드시 확인해야 할 기준입니다.
-                      </p>
                     </div>
                   </div>
 

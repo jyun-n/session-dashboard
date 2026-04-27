@@ -46,7 +46,11 @@ export async function collectData(fromdd: string, todd: string) {
 
     if (patientRows.length === 0) continue;
 
-    for (const row of patientRows) {
+    // 교수명이 빈 경우 제외 (퇴사 등)
+    const validPatientRows = patientRows.filter(r => r.doctorName.trim() !== "");
+    if (validPatientRows.length === 0) continue;
+
+    for (const row of validPatientRows) {
       await prisma.rawPatientStats.upsert({
         where: {
           statDate_doctorId_deptCd_fsexamFlag: {
@@ -82,8 +86,8 @@ export async function collectData(fromdd: string, todd: string) {
       });
     }
 
-    totalPatientRows += patientRows.length;
-    logger.info(`DRPMA00100 ${yyyymmdd}: ${patientRows.length}건`);
+    totalPatientRows += validPatientRows.length;
+    logger.info(`DRPMA00100 ${yyyymmdd}: ${validPatientRows.length}건`);
   }
 
   logger.info(`DRPMA00100 저장 완료: 총 ${totalPatientRows}건`);
@@ -93,6 +97,9 @@ export async function collectData(fromdd: string, todd: string) {
   logger.info(`DRPMA00200 수신: ${sessionRows.length}건`);
 
   for (const row of sessionRows) {
+    // 교수명이 빈 경우 제외 (퇴사 등)
+    if (row.doctorName.trim() === "") continue;
+
     const statDate = parseDate(row.statDate);
 
     await prisma.rawSession.upsert({
@@ -104,24 +111,22 @@ export async function collectData(fromdd: string, todd: string) {
         },
       },
       update: {
-        deptName:    row.deptName,
-        doctorName:  row.doctorName,
-        planSession: row.planSession,
-        realSession: row.realSession,
-        fstExamCap:  row.fstExamCap,
-        reExamCap:   row.reExamCap,
-        collectedAt: new Date(),
+        deptName:     row.deptName,
+        doctorName:   row.doctorName,
+        planSession:  row.planSession,
+        realSession:  row.realSession,
+        totalExamCap: row.totalExamCap,
+        collectedAt:  new Date(),
       },
       create: {
         statDate,
-        deptCd:      row.deptCd,
-        deptName:    row.deptName,
-        doctorId:    row.doctorId,
-        doctorName:  row.doctorName,
-        planSession: row.planSession,
-        realSession: row.realSession,
-        fstExamCap:  row.fstExamCap,
-        reExamCap:   row.reExamCap,
+        deptCd:       row.deptCd,
+        deptName:     row.deptName,
+        doctorId:     row.doctorId,
+        doctorName:   row.doctorName,
+        planSession:  row.planSession,
+        realSession:  row.realSession,
+        totalExamCap: row.totalExamCap,
       },
     });
   }

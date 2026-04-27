@@ -1,3 +1,5 @@
+import { handleUnauthorized } from "./authService";
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 
 function getHeaders() {
@@ -8,7 +10,6 @@ function getHeaders() {
   };
 }
 
-// yyyy-mm-dd → yyyymmdd 변환
 function toApiDate(dateStr) {
   return dateStr.replace(/-/g, "");
 }
@@ -21,6 +22,11 @@ export async function fetchDashboardRecords(startDate, endDate) {
     `${API_URL}/dashboard?fromdd=${fromdd}&todd=${todd}`,
     { headers: getHeaders() }
   );
+
+  if (res.status === 401) {
+    handleUnauthorized();
+    return { records: [], lastCollectedAt: null };
+  }
 
   const data = await res.json();
 

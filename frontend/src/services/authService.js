@@ -20,10 +20,10 @@ export async function login({ userId, password }) {
     success: true,
     token: data.data.token,
     user: {
-      id: data.data.account.id,
-      role: data.data.account.role.toLowerCase(), // ADMIN → admin
-      name: data.data.account.name,
-      dept: data.data.account.dept,
+      id:       data.data.account.id,
+      role:     data.data.account.role.toLowerCase(),
+      name:     data.data.account.name,
+      dept:     data.data.account.dept,
       position: data.data.account.position,
     },
   };
@@ -46,4 +46,10 @@ export function getToken() {
 export function clearAuth() {
   localStorage.removeItem("token");
   localStorage.removeItem("auth");
+}
+
+// 401 응답 시 자동 로그아웃 후 로그인 페이지로 이동
+export function handleUnauthorized() {
+  clearAuth();
+  window.location.href = "/login";
 }
