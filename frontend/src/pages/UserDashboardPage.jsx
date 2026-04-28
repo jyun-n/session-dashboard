@@ -882,7 +882,7 @@ export default function UserDashboardPage() {
                   isTrendViewAvailable ? "cursor-pointer transition hover:text-sky-200" : ""
                 }`}
               >
-                외래진료 운영 대시보드
+                외래 진료 운영 대시보드
               </h1>
 
               {lastCollectedAt && (

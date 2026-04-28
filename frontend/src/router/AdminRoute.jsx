@@ -1,9 +1,14 @@
 import { Navigate } from "react-router-dom";
+import { isTokenValid, clearAuth, getAuth } from "../services/authService";
 
 export default function AdminRoute({ children }) {
-  const auth = JSON.parse(localStorage.getItem("auth") || "null");
+  if (!isTokenValid()) {
+    clearAuth();
+    return <Navigate to="/login" replace />;
+  }
 
-  if (!auth || auth.role !== "admin") {
+  const auth = getAuth();
+  if (auth?.role !== "admin") {
     return <Navigate to="/login" replace />;
   }
 

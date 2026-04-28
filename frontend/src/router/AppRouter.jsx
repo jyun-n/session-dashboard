@@ -3,6 +3,7 @@ import LoginPage from "../pages/LoginPage";
 import AdminAccountPage from "../pages/AdminAccountPage";
 import UserDashboardPage from "../pages/UserDashboardPage";
 import AdminRoute from "./AdminRoute";
+import PrivateRoute from "./PrivateRoute";
 
 export default function AppRouter() {
   return (
@@ -17,7 +18,14 @@ export default function AppRouter() {
           </AdminRoute>
         }
       />
-      <Route path="/dashboard" element={<UserDashboardPage />} />
+      <Route
+        path="/dashboard"
+        element={
+          <PrivateRoute>
+            <UserDashboardPage />
+          </PrivateRoute>
+        }
+      />
     </Routes>
   );
 }
