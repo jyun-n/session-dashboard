@@ -81,7 +81,7 @@ export async function login(
   const token = jwt.sign(
     { sub: account.id, role: account.role },
     env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions,
+    { expiresIn: env.JWT_EXPIRES_IN, algorithm: "HS256" } as jwt.SignOptions,
   );
 
   await prisma.loginLog.create({

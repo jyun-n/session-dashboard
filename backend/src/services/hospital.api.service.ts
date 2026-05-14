@@ -1,7 +1,8 @@
 import { XMLParser } from "fast-xml-parser";
+import { env } from "../config/env.js";
 
-const BASE_URL = "http://emr124eduote.cauhs.or.kr/cmcnu/.live";
-const INST_CD = "124";
+const BASE_URL = env.EMR_BASE_URL;
+const INST_CD  = env.EMR_INST_CD;
 
 const parser = new XMLParser({
   ignoreAttributes: false,

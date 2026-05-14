@@ -468,6 +468,9 @@ export default function AdminAccountPage() {
                           {showCreatePassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                       </div>
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                        10자 이상, 영문 대/소문자·숫자·특수문자 중 3종 이상 포함
+                      </p>
                     </div>
                   </div>
 
@@ -512,6 +515,7 @@ export default function AdminAccountPage() {
                     <RuleItem text="사번도 중복 없이 고유하게 생성되어야 합니다." />
                     <RuleItem text="사번은 숫자만 입력할 수 있습니다." />
                     <RuleItem text="사번, 소속, 직책, 성명, 아이디, 비밀번호는 모두 필수 입력 항목입니다." />
+                    <RuleItem text="비밀번호는 10자 이상이며, 영문 대/소문자·숫자·특수문자 중 3종 이상을 포함해야 합니다." />
                     <RuleItem text="초기 비밀번호는 생성 후 계정 관리 탭에서 재설정할 수 있습니다." />
                     <RuleItem text="생성된 계정은 계정 관리 탭에서 바로 확인할 수 있습니다." />
                   </div>
@@ -695,6 +699,9 @@ export default function AdminAccountPage() {
                 {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              10자 이상, 영문 대/소문자·숫자·특수문자 중 3종 이상 포함
+            </p>
 
             {modalError && <p className="mt-3 text-sm text-rose-400">{modalError}</p>}
 

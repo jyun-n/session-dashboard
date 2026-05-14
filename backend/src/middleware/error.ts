@@ -22,10 +22,13 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof ZodError) {
+    const fieldErrors = err.flatten().fieldErrors;
+    // 첫 번째 필드 에러를 사용자 친화 메시지로 노출 (한국어 메시지가 zod 스키마에 정의되어 있음)
+    const firstMessage = Object.values(fieldErrors).flat().find((m): m is string => typeof m === "string");
     res.status(400).json({
       success: false,
-      message: "Validation error",
-      details: err.flatten().fieldErrors,
+      message: firstMessage ?? "입력값이 올바르지 않습니다.",
+      details: fieldErrors,
     });
     return;
   }

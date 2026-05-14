@@ -1,7 +1,17 @@
+import { timingSafeEqual } from "node:crypto";
 import { prisma } from "../config/db.js";
 import { hashPassword } from "../utils/password.js";
 import { HttpError } from "../middleware/error.js";
 import { env } from "../config/env.js";
+
+// 두 문자열을 상수 시간에 비교. timing attack 으로 정답 추출하는 것을 차단.
+// 길이가 다르면 즉시 false (이 자체로 매우 미세한 길이 정보는 누출되지만 실용상 문제 없음).
+function safeStringEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 const ACCOUNT_PUBLIC_FIELDS = {
   id: true,
@@ -155,7 +165,7 @@ export async function deleteAccount(id: string, deleteSecret: string) {
     throw new HttpError(403, "관리자 계정은 탈퇴할 수 없습니다.");
   }
 
-  if (deleteSecret !== env.DELETE_SECRET) {
+  if (!safeStringEqual(deleteSecret, env.DELETE_SECRET)) {
     throw new HttpError(401, "탈퇴 비밀번호가 올바르지 않습니다.");
   }
 
