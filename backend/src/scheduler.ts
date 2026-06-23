@@ -2,6 +2,31 @@ import { collectData } from "./services/collect.service.js";
 import { logger } from "./utils/logger.js";
 import { prisma } from "./config/db.js";
 
+type Slot = {
+  label: string;
+  kstHour: number;
+  kstMin: number;
+  // 00:05 슬롯은 "전날 마감본"이라 어제 날짜를 수집한다. 그 외 슬롯은 오늘 데이터.
+  useYesterday: boolean;
+};
+
+// 수집 스케줄(KST). 시간 변경 시 이 배열만 수정하면 catchup·라이브 트리거 양쪽에 일괄 반영됨.
+const SLOTS: Slot[] = [
+  { label: "전날마감", kstHour: 0,  kstMin: 5,  useYesterday: true  },
+  { label: "08:40",    kstHour: 8,  kstMin: 40, useYesterday: false },
+  { label: "09:00",    kstHour: 9,  kstMin: 0,  useYesterday: false },
+  { label: "10:30",    kstHour: 10, kstMin: 30, useYesterday: false },
+  { label: "11:30",    kstHour: 11, kstMin: 30, useYesterday: false },
+  { label: "12:30",    kstHour: 12, kstMin: 30, useYesterday: false },
+  { label: "14:00",    kstHour: 14, kstMin: 0,  useYesterday: false },
+  { label: "15:30",    kstHour: 15, kstMin: 30, useYesterday: false },
+  { label: "17:30",    kstHour: 17, kstMin: 30, useYesterday: false },
+];
+
+const SCHEDULE_SUMMARY = SLOTS
+  .map((s) => `${String(s.kstHour).padStart(2, "0")}:${String(s.kstMin).padStart(2, "0")}`)
+  .join(" / ");
+
 function getKstTimeInfo(): { hour: number; minute: number; yyyymmdd: string; yesterddYyyymmdd: string } {
   const now = new Date();
   const kst = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
@@ -24,7 +49,7 @@ function getKstTimeInfo(): { hour: number; minute: number; yyyymmdd: string; yes
 }
 
 // 서버 시작 시 1회 실행. DB의 마지막 수집 시각 이후 지나간 슬롯이 있으면 즉시 보정 수집한다.
-// 절전, 재시작, 배포로 놓친 06:00 / 18:00 / 00:05 KST 슬롯을 자동으로 메운다.
+// 절전, 재시작, 배포로 놓친 SLOTS의 슬롯을 자동으로 메운다.
 async function catchUpMissedSlots(): Promise<void> {
   const { hour: nowH, minute: nowM, yyyymmdd, yesterddYyyymmdd } = getKstTimeInfo();
 
@@ -34,13 +59,7 @@ async function catchUpMissedSlots(): Promise<void> {
   });
   const lastAt = lastRow?.collectedAt ?? new Date(0);
 
-  const slots = [
-    { label: "전날마감", dateStr: yesterddYyyymmdd, kstHour: 0,  kstMin: 5 },
-    { label: "06시",     dateStr: yyyymmdd,        kstHour: 6,  kstMin: 0 },
-    { label: "18시",     dateStr: yyyymmdd,        kstHour: 18, kstMin: 0 },
-  ];
-
-  for (const s of slots) {
+  for (const s of SLOTS) {
     // 슬롯 시각이 아직 안 지났으면 건너뜀
     const passed = nowH > s.kstHour || (nowH === s.kstHour && nowM >= s.kstMin);
     if (!passed) continue;
@@ -55,8 +74,9 @@ async function catchUpMissedSlots(): Promise<void> {
     // 마지막 수집이 슬롯 시각 이후면 이미 수집됨 → 건너뜀
     if (lastAt >= slotAt) continue;
 
-    logger.info(`[스케줄러:catchup] ${s.label} 놓침 감지 → 보정 수집: ${s.dateStr}`);
-    await runCollect(`catchup-${s.label}`, s.dateStr);
+    const dateStr = s.useYesterday ? yesterddYyyymmdd : yyyymmdd;
+    logger.info(`[스케줄러:catchup] ${s.label} 놓침 감지 → 보정 수집: ${dateStr}`);
+    await runCollect(`catchup-${s.label}`, dateStr);
   }
 }
 
@@ -82,15 +102,11 @@ export function startScheduler() {
 
     if (executed.has(key)) return;
 
-    if (hour === 6 && minute === 0) {
+    const matched = SLOTS.find((s) => s.kstHour === hour && s.kstMin === minute);
+    if (matched) {
       executed.add(key);
-      runCollect("06시", yyyymmdd);
-    } else if (hour === 18 && minute === 0) {
-      executed.add(key);
-      runCollect("18시", yyyymmdd);
-    } else if (hour === 0 && minute === 5) {
-      executed.add(key);
-      runCollect("전날마감", yesterddYyyymmdd);
+      const dateStr = matched.useYesterday ? yesterddYyyymmdd : yyyymmdd;
+      runCollect(matched.label, dateStr);
     }
 
     // executed 크기 제한 (메모리 관리)
@@ -100,9 +116,9 @@ export function startScheduler() {
     }
   }, 10_000); // 10초마다 체크
 
-  logger.info("[스케줄러] 시작 완료 (06:00 / 18:00 / 00:05 KST)");
+  logger.info(`[스케줄러] 시작 완료 (${SCHEDULE_SUMMARY} KST)`);
 
-  // 서버 시작 시 놓친 슬롯 보정 (절전·재시작·배포로 놓친 06/18/00:05를 메움)
+  // 서버 시작 시 놓친 슬롯 보정 (절전·재시작·배포로 놓친 슬롯을 메움)
   catchUpMissedSlots().catch((err) => {
     logger.error("[스케줄러:catchup] 보정 실패", {
       message: err instanceof Error ? err.message : String(err),
