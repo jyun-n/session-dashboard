@@ -18,7 +18,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   DELETE_SECRET: z.string().min(1, "DELETE_SECRET is required"),
   EMR_BASE_URL: z.string().url().default("http://emr124.cauhs.or.kr/cmcnu/.live"),
-  EMR_INST_CD: z.string().default("124"),
+  EMR_INST_CD:  z.string().default("124"),
 });
 
 const parsed = envSchema.safeParse(process.env);

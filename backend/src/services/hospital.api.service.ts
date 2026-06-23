@@ -85,14 +85,16 @@ export async function fetchPatientStats(
 }
 
 export interface RawSessionRow {
-  statDate:     string;   // basedd
-  deptCd:       string;
-  deptName:     string;
-  doctorId:     string;
-  doctorName:   string;
-  planSession:  number;
-  realSession:  number;
-  totalExamCap: number;   // totalexamcap
+  statDate:         string;   // basedd
+  deptCd:           string;
+  deptName:         string;
+  doctorId:         string;
+  doctorName:       string;
+  planSession:      number;
+  realSession:      number;
+  totalExamCap:     number;   // totalexamcap
+  closeReason:      string | null;  // ordendresn
+  closeRequestTime: string | null;  // lastupdtdt (YYYYMMDDHHMMSS 14자리)
 }
 
 export async function fetchSessions(
@@ -110,14 +112,91 @@ export async function fetchSessions(
   return rows.map((row: unknown) => {
     const r = row as Record<string, unknown>;
     return {
-      statDate:     cdata(r.basedd),          // enddd → basedd
-      deptCd:       cdata(r.orddeptcd),
-      deptName:     cdata(r.orddeptnm),
-      doctorId:     cdata(r.orddrid),
-      doctorName:   cdata(r.orddrnm),
-      planSession:  parseInt(cdata(r.plansession)   || "0", 10),
-      realSession:  parseInt(cdata(r.realsession)   || "0", 10),
-      totalExamCap: parseInt(cdata(r.totalexamcap)  || "0", 10),
+      statDate:         cdata(r.basedd),          // enddd → basedd
+      deptCd:           cdata(r.orddeptcd),
+      deptName:         cdata(r.orddeptnm),
+      doctorId:         cdata(r.orddrid),
+      doctorName:       cdata(r.orddrnm),
+      planSession:      parseInt(cdata(r.plansession)   || "0", 10),
+      realSession:      parseInt(cdata(r.realsession)   || "0", 10),
+      totalExamCap:     parseInt(cdata(r.totalexamcap)  || "0", 10),
+      closeReason:      cdata(r.ordendresn) || null,
+      closeRequestTime: cdata(r.lastupdtdt) || null,
+    };
+  });
+}
+
+// DRPMA00200 보조 호출 — 마감 2개 필드만 추출하여 RawSession에 머지.
+// 같은 (statDate, doctorId, deptCd) 키로 매핑해 메인 응답에 합침.
+export interface RawCloseInfoRow {
+  statDate:         string;        // basedd
+  deptCd:           string;
+  doctorId:         string;
+  closeReason:      string | null; // ordendresn
+  closeRequestTime: string | null; // lastupdtdt (YYYYMMDDHHMMSSXXX 17자리 — 밀리초 포함)
+}
+
+export async function fetchCloseInfo(fromdd: string, todd: string): Promise<RawCloseInfoRow[]> {
+  const url = `${BASE_URL}?submit_id=DRPMA00200&business_id=pm&instcd=${INST_CD}&fromdd=${fromdd}&todd=${todd}&orddeptcd=`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`DRPMA00200(마감) 호출 실패: ${res.status}`);
+
+  const xml  = await res.text();
+  const rows = parseXml(xml);
+
+  return rows.map((row: unknown) => {
+    const r = row as Record<string, unknown>;
+    return {
+      statDate:         cdata(r.basedd),
+      deptCd:           cdata(r.orddeptcd),
+      doctorId:         cdata(r.orddrid),
+      closeReason:      cdata(r.ordendresn) || null,
+      closeRequestTime: cdata(r.lastupdtdt) || null,
+    };
+  });
+}
+
+// DRPMA00100 srchflag=T — 교수별 진료 시작/종료시간.
+// (yyyymmdd, deptCd, doctorId) 3종 필수 (담당자 가이드: 누락 시 데이터량 폭증으로 오류).
+// 응답은 환자별 진료 이벤트 row가 다수 — 동일 의사에 여러 row 가능. 합쳐서 MIN/MAX는 호출자(collect)가 처리.
+// 1일치씩 호출하므로 응답에 날짜 필드가 없어도 입력 yyyymmdd를 그대로 statDate로 사용.
+export interface RawDoctorTimeRow {
+  statDate:           string;        // 입력 yyyymmdd 그대로
+  deptCd:             string;
+  deptName:           string;
+  doctorId:           string;
+  doctorName:         string;
+  treatmentStartTime: string | null; // ordstartdt (YYYYMMDDHHMMSS 14자리)
+  treatmentEndTime:   string | null; // dracptdt  (YYYYMMDDHHMMSS 14자리)
+}
+
+export async function fetchDoctorTimes(
+  yyyymmdd: string,
+  deptCd:   string,
+  doctorId: string,
+): Promise<RawDoctorTimeRow[]> {
+  const url =
+    `${BASE_URL}?submit_id=DRPMA00100&business_id=pm&instcd=${INST_CD}` +
+    `&srchflag=T&fromdd=${yyyymmdd}&todd=${yyyymmdd}` +
+    `&orddeptcd=${encodeURIComponent(deptCd)}&orddrid=${encodeURIComponent(doctorId)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`DRPMA00100(T) 호출 실패: ${res.status}`);
+
+  const xml  = await res.text();
+  const rows = parseXml(xml);
+
+  return rows.map((row: unknown) => {
+    const r = row as Record<string, unknown>;
+    return {
+      statDate:           yyyymmdd,
+      deptCd:             cdata(r.orddeptcd),
+      deptName:           cdata(r.orddeptnm),
+      doctorId:           cdata(r.orddrid),
+      doctorName:         cdata(r.orddrnm),
+      treatmentStartTime: cdata(r.ordstartdt) || null,
+      treatmentEndTime:   cdata(r.dracptdt)   || null,
     };
   });
 }

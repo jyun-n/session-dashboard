@@ -3,7 +3,8 @@ import { minToHhmi } from "./hospital.api.service.js";
 import { logger } from "../utils/logger.js";
 import { Decimal } from "@prisma/client/runtime/library.js";
 
-const VALID_FLAGS = ["F", "R", "D", "S"];
+const VALID_FLAGS   = ["F", "R", "D", "S"];
+const REVISIT_FLAGS = ["D", "S", "R"];
 
 function toDecimal(n: number | null): Decimal | null {
   return n !== null ? new Decimal(n) : null;
@@ -14,6 +15,15 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
     where: { statDate: { gte: fromDate, lte: toDate } },
   });
 
+  // 진료 시작/종료시간을 (statDate, doctorId, deptCd) 단위로 미리 로드.
+  // 세션마다 findUnique 한 번씩 치는 대신 N+1 쿼리를 1번으로 줄임.
+  const doctorTimes = await prisma.rawDoctorTime.findMany({
+    where: { statDate: { gte: fromDate, lte: toDate } },
+  });
+  const doctorTimeMap = new Map(
+    doctorTimes.map((d) => [`${d.statDate.toISOString()}|${d.doctorId}|${d.deptCd}`, d]),
+  );
+
   for (const session of sessions) {
     const { statDate, doctorId, deptCd } = session;
 
@@ -21,11 +31,15 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
       where: { statDate, doctorId, deptCd },
     });
 
+    const doctorTime = doctorTimeMap.get(`${statDate.toISOString()}|${doctorId}|${deptCd}`);
+
     const validRows       = patientRows.filter(r => VALID_FLAGS.includes(r.fsexamFlag));
     const fRow            = patientRows.find(r => r.fsexamFlag === "F");
-    const rRow            = patientRows.find(r => r.fsexamFlag === "R");
     const firstVisitCount = fRow?.patCnt ?? 0;
-    const revisitCount    = rRow?.patCnt ?? 0;
+    // 재진 = D + S + R 합산 (재진 유형이 여러 코드로 분리되어 들어와 모두 합쳐야 함)
+    const revisitCount    = patientRows
+      .filter(r => REVISIT_FLAGS.includes(r.fsexamFlag))
+      .reduce((sum, r) => sum + r.patCnt, 0);
     const totalPatients   = validRows.reduce((sum, r) => sum + r.patCnt, 0);
 
     // 평균 진료시간 / 대기시간 가중평균 (D+S+R+F, 4/5 제외)
@@ -66,6 +80,10 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
         avgOrdTime, avgWaitTime,
         avgOrdMin: toDecimal(avgOrdMin), avgWaitMin: toDecimal(avgWaitMin),
         firstVisitCount, revisitCount, totalPatients, bookingRate,
+        treatmentStartTime: doctorTime?.treatmentStartTime ?? null,
+        treatmentEndTime:   doctorTime?.treatmentEndTime   ?? null,
+        closeRequestTime:   session.closeRequestTime,
+        closeReason:        session.closeReason,
         aggregatedAt: new Date(),
       },
       create: {
@@ -76,6 +94,10 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
         avgOrdTime, avgWaitTime,
         avgOrdMin: toDecimal(avgOrdMin), avgWaitMin: toDecimal(avgWaitMin),
         firstVisitCount, revisitCount, totalPatients, bookingRate,
+        treatmentStartTime: doctorTime?.treatmentStartTime ?? null,
+        treatmentEndTime:   doctorTime?.treatmentEndTime   ?? null,
+        closeRequestTime:   session.closeRequestTime,
+        closeReason:        session.closeReason,
       },
     });
   }

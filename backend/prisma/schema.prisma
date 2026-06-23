@@ -66,20 +66,41 @@ model RawPatientStats {
 
 // DRPMA00200 - 외래세션정보
 model RawSession {
-  id            Int      @id @default(autoincrement())
-  statDate      DateTime @db.Date        // basedd
-  deptCd        String
-  deptName      String
-  doctorId      String
-  doctorName    String
-  planSession   Int      @default(0)
-  realSession   Int      @default(0)
-  totalExamCap  Int      @default(0)     // totalexamcap (fstExamCap + reExamCap 통합)
-  collectedAt   DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  statDate         DateTime @db.Date        // basedd
+  deptCd           String
+  deptName         String
+  doctorId         String
+  doctorName       String
+  planSession      Int      @default(0)
+  realSession      Int      @default(0)
+  totalExamCap     Int      @default(0)     // totalexamcap (fstExamCap + reExamCap 통합)
+  closeReason      String?                  // ordendresn — 진료마감사유
+  closeRequestTime String?                  // lastupdtdt — 진료마감시간 (YYYYMMDDHHMMSS 14자리)
+  collectedAt      DateTime @default(now())
 
   @@unique([statDate, doctorId, deptCd])
   @@index([statDate, deptCd])
   @@map("raw_sessions")
+}
+
+// DRPMA00100 (srchflag=T) - 교수별 진료 시작/종료시간
+// 호출 단위는 (날짜, 진료과, 진료의) 필수. 응답은 환자별 진료 이벤트 row 다수 →
+// 수집 단계에서 MIN(ordstartdt), MAX(dracptdt)로 합쳐 (날짜, 의사, 과) 단위 1행 저장.
+model RawDoctorTime {
+  id                 Int      @id @default(autoincrement())
+  statDate           DateTime @db.Date
+  doctorId           String
+  doctorName         String
+  deptCd             String
+  deptName           String
+  treatmentStartTime String?  // MIN(ordstartdt) — YYYYMMDDHHMMSS 14자리
+  treatmentEndTime   String?  // MAX(dracptdt)  — YYYYMMDDHHMMSS 14자리
+  collectedAt        DateTime @default(now())
+
+  @@unique([statDate, doctorId, deptCd])
+  @@index([statDate, deptCd])
+  @@map("raw_doctor_times")
 }
 
 // 교수별 집계
@@ -110,6 +131,14 @@ model DailyStatsByDoctor {
 
   // 예약현황 가동률 = totalPatients / totalExamCap × 100
   bookingRate        Decimal? @db.Decimal(7, 2)
+
+  // 진료 시간 / 마감 정보 (YYYYMMDDHHMMSS 14자리 datetime)
+  // - treatment*: DRPMA00100 srchflag=T (RawDoctorTime에서 머지, fsexamflag별 MIN/MAX)
+  // - close*    : DRPMA00200 (RawSession에서 그대로 복사)
+  treatmentStartTime String?
+  treatmentEndTime   String?
+  closeRequestTime   String?
+  closeReason        String?
 
   aggregatedAt       DateTime @default(now())
 
