@@ -611,7 +611,7 @@ export default function AdminAccountPage() {
                   <table className="w-full border-collapse text-left text-[13px]">
                     <colgroup>
                       <col className="w-[170px]" />
-                      <col />
+                      <col className="w-[150px]" />
                       <col className="w-[120px]" />
                       <col />
                       <col className="w-[160px]" />
