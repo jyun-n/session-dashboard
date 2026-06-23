@@ -27,12 +27,14 @@ export const getAccountsHandler: RequestHandler = async (_req, res, next) => {
   }
 };
 
+// 모든 문자열 필드는 trim 적용. 비밀번호만 예외(의도적 공백 가능).
+// 과거 입력에서 앞뒤 공백이 섞여 들어가 탈퇴 후 재가입 시 매칭 안 되는 사례가 있어 추가.
 const createSchema = z.object({
-  empNo:    z.string().regex(/^\d+$/, "사번은 숫자만 입력해주세요."),
-  dept:     z.string().min(1, "소속을 입력해주세요."),
-  position: z.string().min(1, "직책을 입력해주세요."),
-  name:     z.string().min(1, "성명을 입력해주세요."),
-  loginId:  z.string().min(1, "아이디를 입력해주세요."),
+  empNo:    z.string().trim().regex(/^\d+$/, "사번은 숫자만 입력해주세요."),
+  dept:     z.string().trim().min(1, "소속을 입력해주세요."),
+  position: z.string().trim().min(1, "직책을 입력해주세요."),
+  name:     z.string().trim().min(1, "성명을 입력해주세요."),
+  loginId:  z.string().trim().min(1, "아이디를 입력해주세요."),
   password: passwordSchema,
   role:     z.enum(["ADMIN", "USER"]).default("USER"),
 });
@@ -48,8 +50,8 @@ export const createAccountHandler: RequestHandler = async (req, res, next) => {
 };
 
 const updateSchema = z.object({
-  dept:     z.string().min(1, "소속을 입력해주세요."),
-  position: z.string().min(1, "직책을 입력해주세요."),
+  dept:     z.string().trim().min(1, "소속을 입력해주세요."),
+  position: z.string().trim().min(1, "직책을 입력해주세요."),
 });
 
 export const updateAccountHandler: RequestHandler = async (req, res, next) => {
