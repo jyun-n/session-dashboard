@@ -16,7 +16,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";  // sheetjs community fork. cell.s 스타일(wrapText 등) 적용 가능.
 import {
   ResponsiveContainer,
   AreaChart,
@@ -37,7 +37,16 @@ const PERIOD_OPTIONS = [
 ];
 
 const COMMON_GRID =
-  "grid-cols-[1.1fr_1fr_0.85fr_0.85fr_1.3fr_1fr_1fr_0.82fr_0.82fr_1.3fr]";
+  "grid-cols-[1.5fr_1fr_0.85fr_0.85fr_1.3fr_1fr_1fr_0.82fr_0.82fr_1.3fr]";
+
+// 일간 + 교수별 보기 전용 12컬럼 그리드
+// 진료과 / 교수명 / 실 세션 / 진료 시작·종료시간 / 평균 진료·대기시간 / 마감 요청시간·사유 / 초진·재진 / 예약현황 가동률
+const DAILY_PROFESSOR_GRID =
+  "grid-cols-[1.5fr_1fr_0.7fr_1fr_1fr_1fr_1fr_1fr_1.3fr_1fr_1fr_1.3fr]";
+
+// 주간·월간 + 교수별 보기 전용 11컬럼 그리드 (기존 10컬럼에 '마감 건수' 추가)
+const RANGE_PROFESSOR_GRID =
+  "grid-cols-[1.5fr_1fr_0.85fr_0.85fr_1.3fr_1fr_1fr_0.85fr_0.82fr_0.82fr_1.3fr]";
 
 const KST_TIME_ZONE = "Asia/Seoul";
 
@@ -150,13 +159,14 @@ function createAggregateBucket(labelValue) {
   };
 }
 
-function getPeriodRange(periodType, customStart, customEnd) {
+function getPeriodRange(periodType, customStart, customEnd, dailyDate) {
   const todayKst = getTodayKstString();
   const weekStartKst = getStartOfWeekKstString();
   const monthStartKst = getStartOfMonthKstString();
 
   if (periodType === "daily") {
-    return { startDate: todayKst, endDate: todayKst };
+    const target = dailyDate || todayKst;
+    return { startDate: target, endDate: target };
   }
 
   if (periodType === "weekly") {
@@ -198,19 +208,31 @@ function buildFileName(activeView, periodType, startDate, endDate) {
   return `${getViewName(activeView)}_${getPeriodNameForExport(periodType, startDate, endDate)}.xlsx`;
 }
 
+// 엑셀 wch 단위는 영문 1글자 기준. 한글/한자는 영문보다 약 2배 넓으니 그대로 계산하면 셀이 좁아짐.
+// 동아시아 문자(U+1100 이상의 한글/한자/일본어/전각기호 등)는 너비 2로 환산.
+function displayWidth(s) {
+  let w = 0;
+  for (const ch of s) {
+    w += (ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1;
+  }
+  return w;
+}
+
 function getColumnWidthsFromRows(rows) {
   if (!rows.length) return [];
 
   const keys = Object.keys(rows[0]);
 
   return keys.map((key) => {
-    const headerLength = String(key).length;
-    const maxValueLength = rows.reduce((max, row) => {
-      const valueLength = String(row[key] ?? "").length;
-      return Math.max(max, valueLength);
+    const headerWidth = displayWidth(String(key));
+    const maxValueWidth = rows.reduce((max, row) => {
+      const text = String(row[key] ?? "");
+      // 멀티라인 셀(마감 상세 등)은 가장 긴 한 줄 폭으로 잡아야 다른 줄도 다 들어감
+      const longestLine = text.split("\n").reduce((m, line) => Math.max(m, displayWidth(line)), 0);
+      return Math.max(max, longestLine);
     }, 0);
 
-    return { wch: Math.min(Math.max(headerLength, maxValueLength) + 2, 24) };
+    return { wch: Math.min(Math.max(headerWidth, maxValueWidth) + 2, 60) };
   });
 }
 
@@ -259,6 +281,19 @@ function getKoreanWeekday(dateString) {
 
 function formatTooltipDate(dateString) {
   return `${dateString} (${getKoreanWeekday(dateString)})`;
+}
+
+// 14자리 datetime("YYYYMMDDHHMMSS") → "HH:MM". DB는 raw 그대로 보관, 표시만 변환.
+// 잘못된 값/짧은 값은 null 반환 → 호출부에서 "--" placeholder로 처리.
+function formatTime14ToHHMM(s) {
+  if (typeof s !== "string" || s.length < 12) return null;
+  return `${s.slice(8, 10)}:${s.slice(10, 12)}`;
+}
+
+// 14자리 datetime → "YYYY-MM-DD HH:MM" (일간 보기의 마감 요청시간에 날짜+시간 함께 표시).
+function formatDateTime14ToYMDHM(s) {
+  if (typeof s !== "string" || s.length < 12) return null;
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)} ${s.slice(8, 10)}:${s.slice(10, 12)}`;
 }
 
 function formatMetricValue(value, suffix = "", decimals = 0) {
@@ -468,6 +503,7 @@ export default function UserDashboardPage() {
 
   const [periodType, setPeriodType] = useState("daily");
   const [activeView, setActiveView] = useState("department");
+  const [dailyDate, setDailyDate] = useState(() => getTodayKstString());
   const [customStart, setCustomStart] = useState(() => getStartOfWeekKstString());
   const [customEnd, setCustomEnd] = useState(() => getTodayKstString());
   const [selectedDept, setSelectedDept] = useState("전체");
@@ -476,16 +512,19 @@ export default function UserDashboardPage() {
   const [sortConfig, setSortConfig] = useState({ key: "dept", direction: "asc" });
   const [trendModalTarget, setTrendModalTarget] = useState(null);
   const [hospitalTrendOpen, setHospitalTrendOpen] = useState(false);
+  const [closeCountModalTarget, setCloseCountModalTarget] = useState(null);
   const [sourceHelpOpen, setSourceHelpOpen] = useState(false);
   const sourceHelpRef = useRef(null);
+  const [scheduleHelpOpen, setScheduleHelpOpen] = useState(false);
+  const scheduleHelpRef = useRef(null);
 
   const [allRecords, setAllRecords] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastCollectedAt, setLastCollectedAt] = useState(null);
 
   const periodRange = useMemo(
-    () => getPeriodRange(periodType, customStart, customEnd),
-    [periodType, customStart, customEnd]
+    () => getPeriodRange(periodType, customStart, customEnd, dailyDate),
+    [periodType, customStart, customEnd, dailyDate]
   );
 
   useEffect(() => {
@@ -581,18 +620,40 @@ export default function UserDashboardPage() {
       if (!acc[groupKey]) {
         acc[groupKey] = createAggregateBucket(cur.professor);
         acc[groupKey].dept = cur.dept;
+        // 일간용 단일값 + 기간용 마감 리스트 누적 (createAggregateBucket은 공용이라 여기서 확장)
+        acc[groupKey].treatmentStartTime = null;
+        acc[groupKey].treatmentEndTime   = null;
+        acc[groupKey].closeRequestTime   = null;
+        acc[groupKey].closeReason        = null;
+        acc[groupKey].closeRequests      = [];
       }
 
       const bucket = acc[groupKey];
 
-      bucket.plannedSessions += cur.plannedSessions;
-      bucket.actualSessions += cur.actualSessions;
-      bucket.treatmentSum += cur.avgTreatmentMin;
-      bucket.waitSum += cur.avgWaitMin;
+      bucket.plannedSessions    += cur.plannedSessions;
+      bucket.actualSessions     += cur.actualSessions;
+      bucket.treatmentSum       += cur.avgTreatmentMin;
+      bucket.waitSum            += cur.avgWaitMin;
       bucket.firstVisitPatients += cur.firstVisitPatients;
-      bucket.revisitPatients += cur.revisitPatients;
-      bucket.bookingSum += cur.bookingRate;
-      bucket.count += 1;
+      bucket.revisitPatients    += cur.revisitPatients;
+      bucket.bookingSum         += cur.bookingRate;
+      bucket.count              += 1;
+
+      // 일간 보기는 (의사,과)당 cur 1개라 그 값이 그대로 들어감.
+      // 기간 보기에선 마지막 row 값으로 덮어쓰이지만 기간 화면엔 표시되지 않으므로 무관.
+      if (cur.treatmentStartTime) bucket.treatmentStartTime = cur.treatmentStartTime;
+      if (cur.treatmentEndTime)   bucket.treatmentEndTime   = cur.treatmentEndTime;
+      if (cur.closeRequestTime)   bucket.closeRequestTime   = cur.closeRequestTime;
+      if (cur.closeReason)        bucket.closeReason        = cur.closeReason;
+
+      // 마감 요청이 있는 날만 리스트에 누적. 기간 보기의 closeCount / 모달 closeRequests[].
+      if (cur.closeRequestTime) {
+        bucket.closeRequests.push({
+          date:        cur.date,
+          requestTime: cur.closeRequestTime,
+          reason:      cur.closeReason,
+        });
+      }
 
       return acc;
     }, {});
@@ -613,6 +674,14 @@ export default function UserDashboardPage() {
         firstVisitPatients: item.firstVisitPatients,
         revisitPatients: item.revisitPatients,
         bookingRate: item.count ? item.bookingSum / item.count : 0,
+        // 일간 보기에서 사용 (single value)
+        treatmentStartTime: item.treatmentStartTime,
+        treatmentEndTime:   item.treatmentEndTime,
+        closeRequestTime:   item.closeRequestTime,
+        closeReason:        item.closeReason,
+        // 기간 보기에서 사용 (count + list)
+        closeRequests:      item.closeRequests,
+        closeCount:         item.closeRequests.length,
       };
     });
 
@@ -742,24 +811,116 @@ export default function UserDashboardPage() {
     const { startDate, endDate } = periodRange;
     const secondHeaderLabel = activeView === "department" ? "교수 수" : "교수명";
 
-    const exportRows = currentRows.map((row) => ({
-      진료과: row.dept,
-      [secondHeaderLabel]: row.secondColumn,
-      "계획 세션": row.plannedSessions,
-      "실 세션": row.actualSessions,
-      "세션 가동률": `${Math.round(row.sessionUtilization)}%`,
-      "평균 진료시간": `${row.avgTreatmentMin.toFixed(1)}분`,
-      "평균 대기시간": `${row.avgWaitMin.toFixed(1)}분`,
-      "초진(병초)": row.firstVisitPatients,
-      재진: row.revisitPatients,
-      "예약현황 가동률": `${Math.round(row.bookingRate)}%`,
-    }));
+    // 화면 표와 동일한 컬럼 구성으로 내보냄.
+    const isDailyProfessor = activeView === "professor" && periodType === "daily";
+    const isRangeProfessor = activeView === "professor" && periodType !== "daily";
+    const dash = (v) => (v === undefined || v === null || v === "" ? "--" : v);
+
+    const exportRows = currentRows.map((row) => {
+      if (isDailyProfessor) {
+        return {
+          진료과: row.dept,
+          [secondHeaderLabel]: row.secondColumn,
+          "실 세션": row.actualSessions,
+          "진료 시작시간": dash(formatTime14ToHHMM(row.treatmentStartTime)),
+          "진료 종료시간": dash(formatTime14ToHHMM(row.treatmentEndTime)),
+          "평균 진료시간": `${row.avgTreatmentMin.toFixed(1)}분`,
+          "평균 대기시간": `${row.avgWaitMin.toFixed(1)}분`,
+          "마감 요청시간": dash(formatTime14ToHHMM(row.closeRequestTime)),
+          "마감 사유": dash(row.closeReason),
+          "초진(병초)": row.firstVisitPatients,
+          재진: row.revisitPatients,
+          "예약현황 가동률": `${Math.round(row.bookingRate)}%`,
+        };
+      }
+      if (isRangeProfessor) {
+        // 일자 오름차순(오래된 것이 위, 최신이 아래) 정렬 후 두 컬럼을 각각 \n로 합침.
+        // 두 셀의 N번째 줄이 서로 짝(같은 마감 1건)이 되도록 같은 순서로 만든다.
+        const requests = (row.closeRequests ?? [])
+          .slice()
+          .sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
+
+        // 일자 / 마감 요청시간 / 마감 사유 — 모달과 동일하게 3컬럼 분리.
+        // N번째 줄이 모두 같은 마감 1건의 정보가 되도록 같은 순서로 매핑.
+        const dates = requests.length === 0
+          ? "--"
+          : requests.map((r) => r.date ?? "--").join("\n");
+
+        const requestTimes = requests.length === 0
+          ? "--"
+          : requests.map((r) => formatDateTime14ToYMDHM(r.requestTime) ?? "--").join("\n");
+
+        const reasons = requests.length === 0
+          ? "--"
+          : requests.map((r) => r.reason ?? "--").join("\n");
+
+        return {
+          진료과: row.dept,
+          [secondHeaderLabel]: row.secondColumn,
+          "계획 세션": row.plannedSessions,
+          "실 세션": row.actualSessions,
+          "세션 가동률": `${Math.round(row.sessionUtilization)}%`,
+          "평균 진료시간": `${row.avgTreatmentMin.toFixed(1)}분`,
+          "평균 대기시간": `${row.avgWaitMin.toFixed(1)}분`,
+          "마감 건수": dash(row.closeCount),
+          "일자": dates,
+          "마감 요청시간": requestTimes,
+          "마감 사유": reasons,
+          "초진(병초)": row.firstVisitPatients,
+          재진: row.revisitPatients,
+          "예약현황 가동률": `${Math.round(row.bookingRate)}%`,
+        };
+      }
+      return {
+        진료과: row.dept,
+        [secondHeaderLabel]: row.secondColumn,
+        "계획 세션": row.plannedSessions,
+        "실 세션": row.actualSessions,
+        "세션 가동률": `${Math.round(row.sessionUtilization)}%`,
+        "평균 진료시간": `${row.avgTreatmentMin.toFixed(1)}분`,
+        "평균 대기시간": `${row.avgWaitMin.toFixed(1)}분`,
+        "초진(병초)": row.firstVisitPatients,
+        재진: row.revisitPatients,
+        "예약현황 가동률": `${Math.round(row.bookingRate)}%`,
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(exportRows);
     worksheet["!cols"] = getColumnWidthsFromRows(exportRows);
 
     if (worksheet["!ref"]) {
       worksheet["!autofilter"] = { ref: worksheet["!ref"] };
+    }
+
+    // 마감 요청시간 / 마감 사유 셀: 줄바꿈 표시(wrapText) + 줄 수에 맞춰 행 높이 자동 조정.
+    // 행 높이가 늘어나면 다른 셀(진료과/교수명 등)도 vertical:top 으로 정렬해야 하단에 붙지 않음.
+    if (isRangeProfessor && exportRows.length > 0) {
+      const headerKeys = Object.keys(exportRows[0]);
+      const multiLineCols = ["일자", "마감 요청시간", "마감 사유"];
+      const multiLineIndices = multiLineCols
+        .map((name) => headerKeys.indexOf(name))
+        .filter((i) => i >= 0);
+
+      const rowHeights = [{ hpx: 22 }]; // 헤더 행
+
+      exportRows.forEach((row, i) => {
+        // 한 행의 모든 셀에 vertical:top 적용. 마감 관련 셀에만 wrapText 추가.
+        headerKeys.forEach((_, colIdx) => {
+          const cellAddr = XLSX.utils.encode_cell({ r: i + 1, c: colIdx });
+          if (worksheet[cellAddr]) {
+            const isMultiLine = multiLineIndices.includes(colIdx);
+            worksheet[cellAddr].s = {
+              alignment: { vertical: "top", wrapText: isMultiLine },
+            };
+          }
+        });
+        // 행 높이는 두 마감 컬럼 중 더 많은 줄 수 기준 (보통 둘이 같음)
+        const lineCount = multiLineCols.reduce((max, col) => {
+          return Math.max(max, String(row[col] ?? "").split("\n").length);
+        }, 1);
+        rowHeights.push({ hpx: Math.max(20, lineCount * 16) });
+      });
+      worksheet["!rows"] = rowHeights;
     }
 
     const workbook = XLSX.utils.book_new();
@@ -804,20 +965,45 @@ export default function UserDashboardPage() {
       ];
     }
 
+    // 교수별 + 일간 — 계획 세션·세션 가동률 빠지고 진료 시작/종료시간·마감 요청시간·마감 사유가 추가됨
+    if (periodType === "daily") {
+      return [
+        { label: "진료과 / 교수 명 / 실 세션", source: "외래진료의사별 session 개설현황" },
+        { label: "진료 시작시간 / 진료 종료시간 / 평균 진료시간 / 평균 대기시간", source: "외래대기환자전광판관리" },
+        { label: "마감 요청시간 / 마감 사유", source: "의사별당일마감조회" },
+        { label: "초진(병초) / 재진", source: "진료과별 의사별 환자실적" },
+        { label: "예약현황 가동률", source: "외래진료예약" },
+      ];
+    }
+
+    // 교수별 + 주간/월간/기간 선택 — 마감 건수 추가
     return [
       { label: "진료과 / 교수 명 / 계획 세션 / 실 세션 / 세션 가동률", source: "외래진료의사별 session 개설현황" },
       { label: "평균 진료시간 / 평균 대기시간", source: "외래대기환자전광판관리" },
+      { label: "마감 건수", source: "의사별당일마감조회" },
       { label: "초진(병초) / 재진", source: "진료과별 의사별 환자실적" },
       { label: "예약현황 가동률", source: "외래진료예약" },
     ];
-  }, [activeView]);
+  }, [activeView, periodType]);
 
-  const isAnyModalOpen = Boolean(trendModalTarget || hospitalTrendOpen);
+  // 마감 건수 컬럼이 보이는 조합: 교수별 + (주간/월간/기간선택)
+  const isRangeProfessorView = activeView === "professor" && periodType !== "daily";
+
+  const handleOpenCloseCountModal = (row) => {
+    setCloseCountModalTarget({
+      dept: row.dept,
+      professor: row.secondColumn,
+      closeRequests: row.closeRequests ?? [], // 데이터 연결 전이라 빈 배열 가능
+    });
+  };
+
+  const isAnyModalOpen = Boolean(trendModalTarget || hospitalTrendOpen || closeCountModalTarget);
 
   useEffect(() => {
     if (periodType === "daily") {
       setTrendModalTarget(null);
       setHospitalTrendOpen(false);
+      setCloseCountModalTarget(null);
     }
   }, [periodType]);
 
@@ -826,10 +1012,16 @@ export default function UserDashboardPage() {
       if (!sourceHelpRef.current?.contains(event.target)) {
         setSourceHelpOpen(false);
       }
+      if (!scheduleHelpRef.current?.contains(event.target)) {
+        setScheduleHelpOpen(false);
+      }
     };
 
     const handleEscape = (event) => {
-      if (event.key === "Escape") setSourceHelpOpen(false);
+      if (event.key === "Escape") {
+        setSourceHelpOpen(false);
+        setScheduleHelpOpen(false);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -848,6 +1040,7 @@ export default function UserDashboardPage() {
       if (event.key === "Escape") {
         setTrendModalTarget(null);
         setHospitalTrendOpen(false);
+        setCloseCountModalTarget(null);
       }
     };
 
@@ -885,25 +1078,91 @@ export default function UserDashboardPage() {
                 외래 진료 운영 대시보드
               </h1>
 
-              {lastCollectedAt && (
-                <p className="mt-1 text-[13px] text-slate-500">
-                  마지막 업데이트:{" "}
-                  <span className="text-slate-400">
-                    {new Date(lastCollectedAt).toLocaleString("ko-KR", {
-                      timeZone: "Asia/Seoul",
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                  <span className="mx-2 text-slate-600">·</span>
-                  <span className="text-slate-500">
-                    2026년 4월 1일부터 데이터 조회가 가능합니다.
-                  </span>
-                </p>
-              )}
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-slate-500">
+                {lastCollectedAt && (
+                  <>
+                    <span ref={scheduleHelpRef} className="relative inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setScheduleHelpOpen((prev) => !prev)}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-300 transition hover:border-sky-300/30 hover:bg-white/[0.08] hover:text-sky-200"
+                        aria-label="자동 업데이트 시각 도움말"
+                      >
+                        <CircleHelp size={12} />
+                      </button>
+                      <span>
+                        마지막 업데이트:{" "}
+                        <span className="text-slate-400">
+                          {new Date(lastCollectedAt).toLocaleString("ko-KR", {
+                            timeZone: "Asia/Seoul",
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })}
+                        </span>
+                      </span>
+                      {scheduleHelpOpen && <ScheduleHelpPopover />}
+                    </span>
+                    <span className="text-slate-600">·</span>
+                  </>
+                )}
+                <span>{import.meta.env.VITE_DATA_AVAILABLE_FROM_LABEL || "2026년 4월 1일"}부터 데이터 조회가 가능합니다.</span>
+
+                {periodType === "daily" && (
+                  <>
+                    <span className="text-slate-600">·</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>조회일:</span>
+                      <input
+                        type="date"
+                        value={dailyDate}
+                        onChange={(e) => setDailyDate(e.target.value)}
+                        style={{ colorScheme: "dark" }}
+                        className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[13px] text-slate-200 outline-none transition focus:border-sky-400/40"
+                      />
+                    </span>
+                  </>
+                )}
+
+                {(periodType === "weekly" || periodType === "monthly") && (
+                  <>
+                    <span className="text-slate-600">·</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>조회기간:</span>
+                      <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[13px] text-slate-200">
+                        {periodRange.startDate} ~ {periodRange.endDate}
+                      </span>
+                    </span>
+                  </>
+                )}
+
+                {periodType === "custom" && (
+                  <>
+                    <span className="text-slate-600">·</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>조회기간:</span>
+                      <input
+                        type="date"
+                        value={customStart}
+                        onChange={(e) => setCustomStart(e.target.value)}
+                        style={{ colorScheme: "dark" }}
+                        className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[13px] text-slate-200 outline-none transition focus:border-sky-400/40"
+                      />
+                      <span className="text-slate-600">~</span>
+                      <input
+                        type="date"
+                        value={customEnd}
+                        onChange={(e) => setCustomEnd(e.target.value)}
+                        style={{ colorScheme: "dark" }}
+                        className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[13px] text-slate-200 outline-none transition focus:border-sky-400/40"
+                      />
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
@@ -934,15 +1193,6 @@ export default function UserDashboardPage() {
               </button>
             </div>
           </div>
-
-          {periodType === "custom" && (
-            <div className="mb-4 flex justify-end">
-              <div className="grid w-full gap-3 rounded-[20px] border border-white/10 bg-white/[0.025] p-4 md:grid-cols-2 lg:max-w-[460px]">
-                <DateInput label="시작일" value={customStart} onChange={setCustomStart} />
-                <DateInput label="종료일" value={customEnd} onChange={setCustomEnd} />
-              </div>
-            </div>
-          )}
 
           {/* 로딩 인디케이터 */}
           {isLoading && (
@@ -1067,6 +1317,7 @@ export default function UserDashboardPage() {
                 activeView={activeView}
                 periodType={periodType}
                 onRowClick={isTrendViewAvailable ? handleOpenTrendModal : undefined}
+                onCloseCountClick={isRangeProfessorView ? handleOpenCloseCountModal : undefined}
               />
             )}
           </div>
@@ -1120,6 +1371,14 @@ export default function UserDashboardPage() {
             startDate={periodRange.startDate}
             endDate={periodRange.endDate}
             granularity={trendGranularity}
+          />
+        )}
+
+        {closeCountModalTarget && (
+          <CloseCountModal
+            target={closeCountModalTarget}
+            periodRange={periodRange}
+            onClose={() => setCloseCountModalTarget(null)}
           />
         )}
 
@@ -1183,28 +1442,73 @@ export default function UserDashboardPage() {
   );
 }
 
-function UnifiedList({ rows, secondHeaderLabel, sortConfig, onSort, activeView, periodType, onRowClick }) {
-  const columns = [
-    { key: "dept", label: "진료과" },
-    { key: "secondColumn", label: secondHeaderLabel },
-    { key: "plannedSessions", label: "계획 세션" },
-    { key: "actualSessions", label: "실 세션" },
-    { key: "sessionUtilization", label: "세션 가동률" },
-    { key: "avgTreatmentMin", label: "평균 진료시간" },
-    { key: "avgWaitMin", label: "평균 대기시간" },
-    { key: "firstVisitPatients", label: "초진(병초)" },
-    { key: "revisitPatients", label: "재진" },
-    { key: "bookingRate", label: "예약현황 가동률" },
-  ];
+function UnifiedList({ rows, secondHeaderLabel, sortConfig, onSort, activeView, periodType, onRowClick, onCloseCountClick }) {
+  // 보기·기간 조합별 컬럼 변형:
+  //   - 교수별 + 일간              → 12컬럼 (계획세션·세션가동률 제거, 진료시작·종료·마감요청·마감사유 추가)
+  //   - 교수별 + 주간/월간/기간선택 → 11컬럼 (기존 + 마감 건수)
+  //   - 진료과별 전체              → 기본 10컬럼
+  const isDailyProfessor = activeView === "professor" && periodType === "daily";
+  const isRangeProfessor = activeView === "professor" && periodType !== "daily";
 
+  let columns;
+  let gridClass;
+
+  if (isDailyProfessor) {
+    columns = [
+      { key: "dept", label: "진료과" },
+      { key: "secondColumn", label: secondHeaderLabel },
+      { key: "actualSessions", label: "실 세션" },
+      { key: "treatmentStartTime", label: "진료 시작시간" },
+      { key: "treatmentEndTime", label: "진료 종료시간" },
+      { key: "avgTreatmentMin", label: "평균 진료시간" },
+      { key: "avgWaitMin", label: "평균 대기시간" },
+      { key: "closeRequestTime", label: "마감 요청시간" },
+      { key: "closeReason", label: "마감 사유" },
+      { key: "firstVisitPatients", label: "초진(병초)" },
+      { key: "revisitPatients", label: "재진" },
+      { key: "bookingRate", label: "예약현황 가동률" },
+    ];
+    gridClass = DAILY_PROFESSOR_GRID;
+  } else if (isRangeProfessor) {
+    columns = [
+      { key: "dept", label: "진료과" },
+      { key: "secondColumn", label: secondHeaderLabel },
+      { key: "plannedSessions", label: "계획 세션" },
+      { key: "actualSessions", label: "실 세션" },
+      { key: "sessionUtilization", label: "세션 가동률" },
+      { key: "avgTreatmentMin", label: "평균 진료시간" },
+      { key: "avgWaitMin", label: "평균 대기시간" },
+      { key: "closeCount", label: "마감 건수" },
+      { key: "firstVisitPatients", label: "초진(병초)" },
+      { key: "revisitPatients", label: "재진" },
+      { key: "bookingRate", label: "예약현황 가동률" },
+    ];
+    gridClass = RANGE_PROFESSOR_GRID;
+  } else {
+    columns = [
+      { key: "dept", label: "진료과" },
+      { key: "secondColumn", label: secondHeaderLabel },
+      { key: "plannedSessions", label: "계획 세션" },
+      { key: "actualSessions", label: "실 세션" },
+      { key: "sessionUtilization", label: "세션 가동률" },
+      { key: "avgTreatmentMin", label: "평균 진료시간" },
+      { key: "avgWaitMin", label: "평균 대기시간" },
+      { key: "firstVisitPatients", label: "초진(병초)" },
+      { key: "revisitPatients", label: "재진" },
+      { key: "bookingRate", label: "예약현황 가동률" },
+    ];
+    gridClass = COMMON_GRID;
+  }
   const isClickable = typeof onRowClick === "function";
+  // 데이터 소스 연결 전이라 placeholder 표기.
+  const placeholder = (value) => (value === undefined || value === null || value === "" ? "--" : value);
 
   return (
     <div
       key={`${activeView}-${periodType}-${sortConfig.key}-${sortConfig.direction}-${rows.length}`}
       className="dashboard-scroll h-full min-h-0 overflow-y-scroll animate-[tableFade_0.32s_ease]"
     >
-      <div className={`sticky top-0 z-10 grid ${COMMON_GRID} border-b border-white/10 bg-[rgba(11,18,32,0.94)] px-3 py-3.5 text-[14px] font-semibold tracking-[0.02em] text-slate-200 backdrop-blur-xl lg:text-[15px]`}>
+      <div className={`sticky top-0 z-10 grid ${gridClass} border-b border-white/10 bg-[rgba(11,18,32,0.94)] px-3 py-3.5 text-[14px] font-semibold tracking-[0.02em] text-slate-200 backdrop-blur-xl lg:text-[15px]`}>
         {columns.map((column) => (
           <SortHeader key={column.key} label={column.label} sortKey={column.key} sortConfig={sortConfig} onSort={onSort} />
         ))}
@@ -1217,23 +1521,162 @@ function UnifiedList({ rows, secondHeaderLabel, sortConfig, onSort, activeView, 
           <div
             key={`row-${index}`}
             onClick={() => isClickable && onRowClick(row)}
-            className={`grid ${COMMON_GRID} items-center border-b border-white/8 px-3 py-4 text-[16px] text-slate-100 transition duration-200 ${
+            className={`grid ${gridClass} items-center border-b border-white/8 px-3 py-4 text-[16px] text-slate-100 transition duration-200 ${
               isClickable ? "cursor-pointer hover:bg-white/[0.04]" : "cursor-default hover:bg-white/[0.03]"
             }`}
           >
-            <Cell className="text-[17px] font-semibold text-white">{row.dept}</Cell>
-            <Cell className="tabular-nums text-[16px] font-medium text-slate-100">{row.secondColumn}</Cell>
-            <Cell className="tabular-nums text-[16px]">{row.plannedSessions}</Cell>
-            <Cell className="tabular-nums text-[16px]">{row.actualSessions}</Cell>
-            <Cell><MetricBar value={row.sessionUtilization} /></Cell>
-            <Cell className="tabular-nums text-[16px]">{row.avgTreatmentMin.toFixed(1)}분</Cell>
-            <Cell className="tabular-nums text-[16px]">{row.avgWaitMin.toFixed(1)}분</Cell>
-            <Cell className="tabular-nums text-[16px]">{row.firstVisitPatients}</Cell>
-            <Cell className="tabular-nums text-[16px]">{row.revisitPatients}</Cell>
-            <Cell><MetricBar value={row.bookingRate} booking /></Cell>
+            {isDailyProfessor ? (
+              <>
+                <Cell className="text-[17px] font-semibold text-white">{row.dept}</Cell>
+                <Cell className="tabular-nums text-[16px] font-medium text-slate-100">{row.secondColumn}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.actualSessions}</Cell>
+                <Cell className="tabular-nums text-[16px] text-slate-400">{placeholder(formatTime14ToHHMM(row.treatmentStartTime))}</Cell>
+                <Cell className="tabular-nums text-[16px] text-slate-400">{placeholder(formatTime14ToHHMM(row.treatmentEndTime))}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.avgTreatmentMin.toFixed(1)}분</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.avgWaitMin.toFixed(1)}분</Cell>
+                <Cell className="tabular-nums text-[16px] text-slate-400">{placeholder(formatDateTime14ToYMDHM(row.closeRequestTime))}</Cell>
+                <Cell className="text-[16px] text-slate-400">{placeholder(row.closeReason)}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.firstVisitPatients}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.revisitPatients}</Cell>
+                <Cell><MetricBar value={row.bookingRate} booking /></Cell>
+              </>
+            ) : isRangeProfessor ? (
+              <>
+                <Cell className="text-[17px] font-semibold text-white">{row.dept}</Cell>
+                <Cell className="tabular-nums text-[16px] font-medium text-slate-100">{row.secondColumn}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.plannedSessions}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.actualSessions}</Cell>
+                <Cell><MetricBar value={row.sessionUtilization} /></Cell>
+                <Cell className="tabular-nums text-[16px]">{row.avgTreatmentMin.toFixed(1)}분</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.avgWaitMin.toFixed(1)}분</Cell>
+                <Cell
+                  className="tabular-nums text-[16px] text-sky-300 cursor-pointer underline-offset-4 hover:underline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseCountClick?.(row);
+                  }}
+                >
+                  {placeholder(row.closeCount)}
+                </Cell>
+                <Cell className="tabular-nums text-[16px]">{row.firstVisitPatients}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.revisitPatients}</Cell>
+                <Cell><MetricBar value={row.bookingRate} booking /></Cell>
+              </>
+            ) : (
+              <>
+                <Cell className="text-[17px] font-semibold text-white">{row.dept}</Cell>
+                <Cell className="tabular-nums text-[16px] font-medium text-slate-100">{row.secondColumn}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.plannedSessions}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.actualSessions}</Cell>
+                <Cell><MetricBar value={row.sessionUtilization} /></Cell>
+                <Cell className="tabular-nums text-[16px]">{row.avgTreatmentMin.toFixed(1)}분</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.avgWaitMin.toFixed(1)}분</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.firstVisitPatients}</Cell>
+                <Cell className="tabular-nums text-[16px]">{row.revisitPatients}</Cell>
+                <Cell><MetricBar value={row.bookingRate} booking /></Cell>
+              </>
+            )}
           </div>
         ))
       )}
+    </div>
+  );
+}
+
+function CloseCountModal({ target, periodRange, onClose }) {
+  const [keyword, setKeyword] = useState("");
+
+  // 최신순(일자 내림차순) + 검색어 필터
+  const filteredRows = useMemo(() => {
+    const all = (target.closeRequests ?? [])
+      .slice()
+      .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+
+    const lower = keyword.trim().toLowerCase();
+    if (!lower) return all;
+
+    return all.filter((r) =>
+      String(r.date ?? "").toLowerCase().includes(lower) ||
+      String(r.requestTime ?? "").toLowerCase().includes(lower) ||
+      String(r.reason ?? "").toLowerCase().includes(lower)
+    );
+  }, [target.closeRequests, keyword]);
+
+  const totalCount = (target.closeRequests ?? []).length;
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[820px] overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,15,29,0.98),rgba(3,9,20,0.98))] shadow-[0_40px_120px_rgba(2,8,23,0.65)] animate-[modalPop_0.22s_ease]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 헤더 */}
+        <div className="border-b border-white/10 px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-[11px] font-semibold tracking-[0.16em] text-sky-300/85 uppercase">
+                Close Detail
+              </div>
+              <h3 className="text-[22px] font-semibold text-white">
+                {target.professor} <span className="text-slate-400">({target.dept})</span> — 마감 조회 내역
+              </h3>
+              <p className="mt-1 text-sm text-slate-400">
+                조회기간: {periodRange.startDate} ~ {periodRange.endDate} · 총 {totalCount}건
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-white/10 bg-white/[0.04] p-2 text-slate-300 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* 검색 */}
+        <div className="border-b border-white/10 px-6 py-4">
+          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+            <Search size={16} className="text-slate-400" />
+            <input
+              type="text"
+              placeholder="검색 (날짜·시간·사유)"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
+            />
+          </div>
+        </div>
+
+        {/* 표 */}
+        <div className="dashboard-scroll max-h-[60vh] overflow-y-auto">
+          <div className="sticky top-0 z-10 grid grid-cols-[120px_210px_1fr] border-b border-white/10 bg-[rgba(11,18,32,0.94)] px-4 py-3 text-[13px] font-semibold tracking-[0.02em] text-slate-200 backdrop-blur-xl">
+            <div className="text-center">일자</div>
+            <div className="text-center">마감 요청시간</div>
+            <div className="text-center">마감 사유</div>
+          </div>
+
+          {filteredRows.length === 0 ? (
+            <div className="flex h-32 items-center justify-center text-sm text-slate-500">
+              {totalCount === 0 ? "마감 조회 내역이 없습니다." : "검색 결과가 없습니다."}
+            </div>
+          ) : (
+            filteredRows.map((row, i) => (
+              <div
+                key={`close-${i}`}
+                className="grid grid-cols-[120px_210px_1fr] items-center border-b border-white/8 px-4 py-3 text-[14px] text-slate-100"
+              >
+                <div className="text-center tabular-nums">{row.date ?? "--"}</div>
+                <div className="text-center tabular-nums">{formatDateTime14ToYMDHM(row.requestTime) ?? "--"}</div>
+                <div className="text-left text-slate-200">{row.reason ?? "--"}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1498,9 +1941,12 @@ function ModalChip({ label, value }) {
   );
 }
 
-function Cell({ children, className = "" }) {
+function Cell({ children, className = "", onClick }) {
   return (
-    <div className={`flex w-full items-center justify-center text-center ${className}`}>
+    <div
+      className={`flex w-full items-center justify-center text-center ${className}`}
+      onClick={onClick}
+    >
       {children}
     </div>
   );
@@ -1708,6 +2154,48 @@ function SourceHelpPopover({ activeView, items }) {
       </div>
 
       <div className="pointer-events-none absolute bottom-[-7px] right-5 h-4 w-4 rotate-45 border-r border-b border-white/10 bg-[rgba(7,14,27,0.98)]" />
+    </div>
+  );
+}
+
+// 자동 업데이트 스케줄 (KST). backend/src/scheduler.ts SLOTS와 일치 유지.
+const SCHEDULE_SLOTS = [
+  { time: "00:05", desc: "전날 최종 마감" },
+  { time: "08:40" },
+  { time: "09:00" },
+  { time: "10:30" },
+  { time: "11:30" },
+  { time: "12:30" },
+  { time: "14:00" },
+  { time: "15:30" },
+  { time: "17:30" },
+];
+
+function ScheduleHelpPopover() {
+  return (
+    <div className="absolute top-[calc(100%+10px)] left-0 z-[95] w-[320px] rounded-[20px] border border-white/10 bg-[linear-gradient(180deg,rgba(12,22,40,0.98),rgba(6,12,24,0.98))] p-4 shadow-[0_24px_60px_rgba(2,8,23,0.58)] backdrop-blur-2xl">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-400/20 bg-sky-400/10 text-sky-300">
+          <CircleHelp size={15} />
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-white">자동 업데이트 시각 (KST)</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5">
+        {SCHEDULE_SLOTS.map((slot) => (
+          <div
+            key={slot.time}
+            className="flex flex-col items-center justify-center rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2"
+          >
+            <div className="text-[13px] font-semibold tabular-nums text-sky-200">{slot.time}</div>
+            {slot.desc && <div className="mt-0.5 text-[11px] text-slate-400">{slot.desc}</div>}
+          </div>
+        ))}
+      </div>
+
+      <div className="pointer-events-none absolute top-[-7px] left-5 h-4 w-4 rotate-45 border-l border-t border-white/10 bg-[rgba(7,14,27,0.98)]" />
     </div>
   );
 }
