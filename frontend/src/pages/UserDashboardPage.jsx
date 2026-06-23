@@ -13,6 +13,7 @@ import {
   Search,
   Sparkles,
   Stethoscope,
+  TrendingUp,
   Users,
   X,
 } from "lucide-react";
@@ -1069,14 +1070,22 @@ export default function UserDashboardPage() {
                 Outpatient Dashboard
               </div>
 
-              <h1
-                onClick={isTrendViewAvailable ? handleOpenHospitalTrendModal : undefined}
-                className={`text-[28px] font-semibold tracking-[-0.04em] text-white lg:text-[34px] ${
-                  isTrendViewAvailable ? "cursor-pointer transition hover:text-sky-200" : ""
-                }`}
-              >
-                외래 진료 운영 대시보드
-              </h1>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-white lg:text-[34px]">
+                  외래 진료 운영 대시보드
+                </h1>
+                {isTrendViewAvailable && (
+                  <button
+                    type="button"
+                    onClick={handleOpenHospitalTrendModal}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1.5 text-[12px] font-semibold tracking-[0.02em] text-sky-200 shadow-[0_0_12px_rgba(56,189,248,0.18)] transition hover:border-sky-300/50 hover:bg-sky-400/15 hover:text-sky-100 hover:shadow-[0_0_20px_rgba(56,189,248,0.35)]"
+                    aria-label="병원 전체 추이 보기"
+                  >
+                    <TrendingUp size={13} />
+                    병원 전체 추이
+                  </button>
+                )}
+              </div>
 
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-slate-500">
                 {lastCollectedAt && (
