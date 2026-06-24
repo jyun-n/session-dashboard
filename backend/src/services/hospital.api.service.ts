@@ -1,8 +1,9 @@
 import { XMLParser } from "fast-xml-parser";
 import { env } from "../config/env.js";
 
-const BASE_URL = env.EMR_BASE_URL;
-const INST_CD  = env.EMR_INST_CD;
+const BASE_URL     = env.EMR_BASE_URL;
+const BASE_URL_EDU = env.EMR_BASE_URL_EDU;  // 보조 호출 전용 (운영 적용 전 임시 교육 URL)
+const INST_CD      = env.EMR_INST_CD;
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -153,6 +154,42 @@ export async function fetchCloseInfo(fromdd: string, todd: string): Promise<RawC
       doctorId:         cdata(r.orddrid),
       closeReason:      cdata(r.ordendresn) || null,
       closeRequestTime: cdata(r.lastupdtdt) || null,
+    };
+  });
+}
+
+// DRPMA00200 보조 호출 — 오전/오후 진료 시작·종료시간(HHMM 4자리) 4필드만 추출.
+// 운영 EMR에 신규 필드가 적용되기 전 임시로 교육 URL(EMR_BASE_URL_EDU) 사용.
+// 운영 적용 후 EMR_BASE_URL_EDU만 운영 URL로 바꾸면 자동 통일.
+export interface RawSessionTimeRow {
+  statDate:           string;        // basedd
+  deptCd:             string;
+  doctorId:           string;
+  morningStartTime:   string | null; // amsttm (HHMM)
+  morningEndTime:     string | null; // amedtm
+  afternoonStartTime: string | null; // pmsttm
+  afternoonEndTime:   string | null; // pmedtm
+}
+
+export async function fetchSessionTimes(fromdd: string, todd: string): Promise<RawSessionTimeRow[]> {
+  const url = `${BASE_URL_EDU}?submit_id=DRPMA00200&business_id=pm&instcd=${INST_CD}&fromdd=${fromdd}&todd=${todd}&orddeptcd=`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`DRPMA00200(진료시간) 호출 실패: ${res.status}`);
+
+  const xml  = await res.text();
+  const rows = parseXml(xml);
+
+  return rows.map((row: unknown) => {
+    const r = row as Record<string, unknown>;
+    return {
+      statDate:           cdata(r.basedd),
+      deptCd:             cdata(r.orddeptcd),
+      doctorId:           cdata(r.orddrid),
+      morningStartTime:   cdata(r.amsttm) || null,
+      morningEndTime:     cdata(r.amedtm) || null,
+      afternoonStartTime: cdata(r.pmsttm) || null,
+      afternoonEndTime:   cdata(r.pmedtm) || null,
     };
   });
 }

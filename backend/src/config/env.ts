@@ -17,8 +17,11 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   DELETE_SECRET: z.string().min(1, "DELETE_SECRET is required"),
-  EMR_BASE_URL: z.string().url().default("http://emr124.cauhs.or.kr/cmcnu/.live"),
-  EMR_INST_CD:  z.string().default("124"),
+  EMR_BASE_URL:     z.string().url().default("http://emr124.cauhs.or.kr/cmcnu/.live"),
+  // 보조 호출용 (운영 EMR에 신규 필드가 적용되기 전 임시로 교육 URL 사용).
+  // 운영 적용 후 EMR_BASE_URL과 동일하게 변경하면 자동 통일.
+  EMR_BASE_URL_EDU: z.string().url().default("http://emr124eduote.cauhs.or.kr/cmcnu/.live"),
+  EMR_INST_CD:      z.string().default("124"),
 });
 
 const parsed = envSchema.safeParse(process.env);

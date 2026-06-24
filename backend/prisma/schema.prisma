@@ -75,8 +75,14 @@ model RawSession {
   planSession      Int      @default(0)
   realSession      Int      @default(0)
   totalExamCap     Int      @default(0)     // totalexamcap (fstExamCap + reExamCap 통합)
-  closeReason      String?                  // ordendresn — 진료마감사유
-  closeRequestTime String?                  // lastupdtdt — 진료마감시간 (YYYYMMDDHHMMSS 14자리)
+  closeReason         String?               // ordendresn — 진료마감사유
+  closeRequestTime    String?               // lastupdtdt — 진료마감시간 (YYYYMMDDHHMMSS 14자리)
+  // 오전/오후 진료 시간 (DRPMA00200 신규 4필드, HHMM 4자리)
+  // amsttm/amedtm/pmsttm/pmedtm 그대로 받음. 없으면 NULL.
+  morningStartTime    String?               // amsttm
+  morningEndTime      String?               // amedtm
+  afternoonStartTime  String?               // pmsttm
+  afternoonEndTime    String?               // pmedtm
   collectedAt      DateTime @default(now())
 
   @@unique([statDate, doctorId, deptCd])

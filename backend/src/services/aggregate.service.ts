@@ -10,19 +10,26 @@ function toDecimal(n: number | null): Decimal | null {
   return n !== null ? new Decimal(n) : null;
 }
 
+// 오전·오후 시작/종료 4필드 중 NOT NULL인 값으로 MIN(start) / MAX(end) 계산.
+// 4필드 HHMM 4자리. lex 비교가 시간 순서와 일치하므로 문자열 그대로 비교.
+function mergeTreatmentTimes(session: {
+  morningStartTime:   string | null;
+  morningEndTime:     string | null;
+  afternoonStartTime: string | null;
+  afternoonEndTime:   string | null;
+}): { treatmentStartTime: string | null; treatmentEndTime: string | null } {
+  const starts = [session.morningStartTime, session.afternoonStartTime].filter((s): s is string => !!s);
+  const ends   = [session.morningEndTime,   session.afternoonEndTime].filter((s): s is string => !!s);
+  return {
+    treatmentStartTime: starts.length > 0 ? starts.reduce((a, b) => (a < b ? a : b)) : null,
+    treatmentEndTime:   ends.length   > 0 ? ends.reduce((a, b) => (a > b ? a : b))   : null,
+  };
+}
+
 async function aggregateByDoctor(fromDate: Date, toDate: Date) {
   const sessions = await prisma.rawSession.findMany({
     where: { statDate: { gte: fromDate, lte: toDate } },
   });
-
-  // 진료 시작/종료시간을 (statDate, doctorId, deptCd) 단위로 미리 로드.
-  // 세션마다 findUnique 한 번씩 치는 대신 N+1 쿼리를 1번으로 줄임.
-  const doctorTimes = await prisma.rawDoctorTime.findMany({
-    where: { statDate: { gte: fromDate, lte: toDate } },
-  });
-  const doctorTimeMap = new Map(
-    doctorTimes.map((d) => [`${d.statDate.toISOString()}|${d.doctorId}|${d.deptCd}`, d]),
-  );
 
   for (const session of sessions) {
     const { statDate, doctorId, deptCd } = session;
@@ -31,7 +38,7 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
       where: { statDate, doctorId, deptCd },
     });
 
-    const doctorTime = doctorTimeMap.get(`${statDate.toISOString()}|${doctorId}|${deptCd}`);
+    const { treatmentStartTime, treatmentEndTime } = mergeTreatmentTimes(session);
 
     const validRows       = patientRows.filter(r => VALID_FLAGS.includes(r.fsexamFlag));
     const fRow            = patientRows.find(r => r.fsexamFlag === "F");
@@ -80,8 +87,8 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
         avgOrdTime, avgWaitTime,
         avgOrdMin: toDecimal(avgOrdMin), avgWaitMin: toDecimal(avgWaitMin),
         firstVisitCount, revisitCount, totalPatients, bookingRate,
-        treatmentStartTime: doctorTime?.treatmentStartTime ?? null,
-        treatmentEndTime:   doctorTime?.treatmentEndTime   ?? null,
+        treatmentStartTime,
+        treatmentEndTime,
         closeRequestTime:   session.closeRequestTime,
         closeReason:        session.closeReason,
         aggregatedAt: new Date(),
@@ -94,8 +101,8 @@ async function aggregateByDoctor(fromDate: Date, toDate: Date) {
         avgOrdTime, avgWaitTime,
         avgOrdMin: toDecimal(avgOrdMin), avgWaitMin: toDecimal(avgWaitMin),
         firstVisitCount, revisitCount, totalPatients, bookingRate,
-        treatmentStartTime: doctorTime?.treatmentStartTime ?? null,
-        treatmentEndTime:   doctorTime?.treatmentEndTime   ?? null,
+        treatmentStartTime,
+        treatmentEndTime,
         closeRequestTime:   session.closeRequestTime,
         closeReason:        session.closeReason,
       },
