@@ -284,11 +284,15 @@ function formatTooltipDate(dateString) {
   return `${dateString} (${getKoreanWeekday(dateString)})`;
 }
 
-// 14자리 datetime("YYYYMMDDHHMMSS") → "HH:MM". DB는 raw 그대로 보관, 표시만 변환.
-// 잘못된 값/짧은 값은 null 반환 → 호출부에서 "--" placeholder로 처리.
+// 시간 문자열 → "HH:MM". DB는 raw 그대로 보관, 표시만 변환.
+//  - 12자리 이상 (YYYYMMDDHHMMSS[ms]): 8~12 위치를 HH:MM (마감 요청시간 등)
+//  - 4자리 이상 (HHMM):                 0~4 위치를 HH:MM (진료 시작/종료 4필드)
+// 잘못된 값/짧은 값은 null → 호출부에서 "--" placeholder.
 function formatTime14ToHHMM(s) {
-  if (typeof s !== "string" || s.length < 12) return null;
-  return `${s.slice(8, 10)}:${s.slice(10, 12)}`;
+  if (typeof s !== "string") return null;
+  if (s.length >= 12) return `${s.slice(8, 10)}:${s.slice(10, 12)}`;
+  if (s.length >= 4)  return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+  return null;
 }
 
 // 14자리 datetime → "YYYY-MM-DD HH:MM" (일간 보기의 마감 요청시간에 날짜+시간 함께 표시).
