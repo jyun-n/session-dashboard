@@ -1,9 +1,10 @@
 import { XMLParser } from "fast-xml-parser";
 import { env } from "../config/env.js";
 
-const BASE_URL     = env.EMR_BASE_URL;
-const BASE_URL_EDU = env.EMR_BASE_URL_EDU;  // 보조 호출 전용 (운영 적용 전 임시 교육 URL)
-const INST_CD      = env.EMR_INST_CD;
+const BASE_URL = env.EMR_BASE_URL;
+const INST_CD  = env.EMR_INST_CD;
+// 교육 URL(env.EMR_BASE_URL_EDU)은 .env / env.ts에 그대로 두되 현재 호출에는 사용 안 함.
+// 향후 특정 API가 교육 URL을 다시 써야 할 때 `env.EMR_BASE_URL_EDU`를 재참조하면 됨.
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -159,8 +160,8 @@ export async function fetchCloseInfo(fromdd: string, todd: string): Promise<RawC
 }
 
 // DRPMA00200 보조 호출 — 오전/오후 진료 시작·종료시간(HHMM 4자리) 4필드만 추출.
-// 운영 EMR에 신규 필드가 적용되기 전 임시로 교육 URL(EMR_BASE_URL_EDU) 사용.
-// 운영 적용 후 EMR_BASE_URL_EDU만 운영 URL로 바꾸면 자동 통일.
+// 운영 EMR에 4필드가 적용된 후 BASE_URL(운영) 사용으로 통일.
+// (교육 URL이 필요해지면 BASE_URL_EDU로 바꾸면 됨)
 export interface RawSessionTimeRow {
   statDate:           string;        // basedd
   deptCd:             string;
@@ -172,7 +173,7 @@ export interface RawSessionTimeRow {
 }
 
 export async function fetchSessionTimes(fromdd: string, todd: string): Promise<RawSessionTimeRow[]> {
-  const url = `${BASE_URL_EDU}?submit_id=DRPMA00200&business_id=pm&instcd=${INST_CD}&fromdd=${fromdd}&todd=${todd}&orddeptcd=`;
+  const url = `${BASE_URL}?submit_id=DRPMA00200&business_id=pm&instcd=${INST_CD}&fromdd=${fromdd}&todd=${todd}&orddeptcd=`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`DRPMA00200(진료시간) 호출 실패: ${res.status}`);
