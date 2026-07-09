@@ -974,7 +974,8 @@ export default function UserDashboardPage() {
     if (periodType === "daily") {
       return [
         { label: "진료과 / 교수 명 / 실 세션", source: "외래진료의사별 session 개설현황" },
-        { label: "진료 시작시간 / 진료 종료시간 / 평균 진료시간 / 평균 대기시간", source: "외래대기환자전광판관리" },
+        { label: "진료 시작시간 / 진료 종료시간", source: "의사 진료시간 관리 창" },
+        { label: "평균 진료시간 / 평균 대기시간", source: "외래대기환자전광판관리" },
         { label: "마감 요청시간 / 마감 사유", source: "의사별당일마감조회" },
         { label: "초진(병초) / 재진", source: "진료과별 의사별 환자실적" },
         { label: "예약현황 가동률", source: "외래진료예약" },
