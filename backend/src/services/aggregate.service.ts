@@ -12,7 +12,15 @@ function toDecimal(n: number | null): Decimal | null {
 
 // 오전·오후 시작/종료 4필드 중 NOT NULL인 값으로 MIN(start) / MAX(end) 계산.
 // 4필드 HHMM 4자리. lex 비교가 시간 순서와 일치하므로 문자열 그대로 비교.
+//
+// 정합성 보호: EMR이 세션 전환 시점에 오전 시작(amsttm)이 잠깐 비어 있는 임시 상태로
+// 응답할 수 있음(예: 오후 세션 시작 직후). 이때 결과가 "시작 15:00 / 종료 14:34" 처럼
+// 시작 > 종료로 표시되어 현업이 혼동. 이런 명백한 이상값은 NULL로 숨기고 다음 슬롯에서
+// EMR 정리 후 자연 정상화되도록 함.
 function mergeTreatmentTimes(session: {
+  doctorId?:          string;
+  statDate?:          Date;
+  doctorName?:        string;
   morningStartTime:   string | null;
   morningEndTime:     string | null;
   afternoonStartTime: string | null;
@@ -20,10 +28,25 @@ function mergeTreatmentTimes(session: {
 }): { treatmentStartTime: string | null; treatmentEndTime: string | null } {
   const starts = [session.morningStartTime, session.afternoonStartTime].filter((s): s is string => !!s);
   const ends   = [session.morningEndTime,   session.afternoonEndTime].filter((s): s is string => !!s);
-  return {
-    treatmentStartTime: starts.length > 0 ? starts.reduce((a, b) => (a < b ? a : b)) : null,
-    treatmentEndTime:   ends.length   > 0 ? ends.reduce((a, b) => (a > b ? a : b))   : null,
-  };
+  const treatmentStartTime = starts.length > 0 ? starts.reduce((a, b) => (a < b ? a : b)) : null;
+  const treatmentEndTime   = ends.length   > 0 ? ends.reduce((a, b) => (a > b ? a : b))   : null;
+
+  if (treatmentStartTime && treatmentEndTime && treatmentStartTime > treatmentEndTime) {
+    logger.warn(`진료시간 이상값(시작>종료) 감지 — NULL 처리`, {
+      doctorId:           session.doctorId,
+      doctorName:         session.doctorName,
+      statDate:           session.statDate?.toISOString().slice(0, 10),
+      morningStartTime:   session.morningStartTime,
+      morningEndTime:     session.morningEndTime,
+      afternoonStartTime: session.afternoonStartTime,
+      afternoonEndTime:   session.afternoonEndTime,
+      computedStart:      treatmentStartTime,
+      computedEnd:        treatmentEndTime,
+    });
+    return { treatmentStartTime: null, treatmentEndTime: null };
+  }
+
+  return { treatmentStartTime, treatmentEndTime };
 }
 
 async function aggregateByDoctor(fromDate: Date, toDate: Date) {
